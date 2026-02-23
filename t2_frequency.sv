@@ -5,7 +5,7 @@ module t2_frequency #(parameter SMALLN = 2048, parameter BIGM = 128, parameter B
   input  logic         rst_n,
   input  logic         en,
   input  logic         start,
-  input  logic [N-1:0] trng,
+  input  logic [SMALLN-1:0] trng,
   input  logic [31:0]  c1hi_th,
   input  logic [31:0]  c1lo_th,
   output logic         done,
