@@ -35,7 +35,7 @@ module t1_frequency #(parameter int unsigned N = 2048) (
   assign sum_q = c0 + c1;
   assign diff = (c0 > c1) ? (c0 - c1) : (c1 - c0);
 
-  p2s_shiftreg #(.WIDTH(N)) trng_reg (.clock(clk), .reset_n(rst_n), .D(trng),
+  p2s_shiftreg #(.WIDTH(N)) trng_reg1 (.clock(clk), .reset_n(rst_n), .D(trng),
               .ld(sh_ld), .en(sh_en), .Q(bit_q));
 
   counter #(.WIDTH(32)) c0_cnt (.clock(clk), .reset_n(rst_n), .D(32'd0),
