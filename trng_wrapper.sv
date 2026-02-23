@@ -378,7 +378,7 @@ module trng_wrapper #(
     .diff    (t1_diff_w)
   );
 
-  t2_frequency #(.N(SMALLN)) u_t2 (
+  t2_frequency #(.SMALLN(SMALLN), .BIGM(BIGM), .BIGN(BIGN)) u_t2 (
     .clk     (clk),
     .rst_n   (rst_n),
     .en      (t2_en),
