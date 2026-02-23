@@ -1,0 +1,28 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# Build / sim outputs
+build/
+out/
+dist/
+work/
+sim/
+xsim.dir/
+xcelium.d/
+modelsim.ini
+transcript
+vsim.wlf
+*.wlf
+*.vcd
+*.vpd
+*.fst
+*.lxt
+*.log
+xrun.*
+*.shm
+*.diag
+.simvision/
