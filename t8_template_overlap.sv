@@ -3,7 +3,7 @@
 module t8_template_hits #(
   parameter int unsigned N    = 2048,
   parameter int unsigned BIGM = 128,
-  parameter int unsigned M    = 9   // template length
+  parameter int unsigned M    = 9
 )(
   input  logic                   clk,
   input  logic                   rst_n,
@@ -22,21 +22,18 @@ module t8_template_hits #(
   localparam int unsigned POS_W   = $clog2(BIGM+1);
 
   logic [POS_W-1:0] pos;
-  logic [M-1:0]     win [0:NBLOCKS-1];
+  logic [M-1:0]     win  [0:NBLOCKS-1];
   logic [$clog2(M+1)-1:0] fill [0:NBLOCKS-1];
 
-  // Bit ordering matches your TB concatenation:
-  // trng = {trngblock0, ..., trngblock15}
-  // Scan MSB->LSB within each 128-bit block.
+  // bit order: block0 is MSB chunk; within block scan MSB->LSB
   function automatic logic trng_bit(input int unsigned blk, input int unsigned p);
     int unsigned base_msb;
     begin
-      base_msb = (N-1) - blk*BIGM;   // MSB index of block blk
-      trng_bit = trng[base_msb - p]; // p=0 => MSB, p increments => toward LSB
+      base_msb = (N-1) - blk*BIGM;
+      trng_bit = trng[base_msb - p];
     end
   endfunction
 
-  // max hits across blocks for pass/fail
   logic [31:0] max_hits;
   always_comb begin
     max_hits = 32'd0;
@@ -67,30 +64,30 @@ module t8_template_hits #(
           fill[b] <= '0;
         end
       end else if (en && (pos != BIGM[POS_W-1:0])) begin
-        // one bit position per cycle across all blocks
         for (int b = 0; b < NBLOCKS; b++) begin
           logic bit_in;
           logic [M-1:0] win_next;
+          logic [$clog2(M+1)-1:0] fill_next;
 
           bit_in   = trng_bit(b, pos);
           win_next = {win[b][M-2:0], bit_in};
 
-          win[b] <= win_next;
+          // compute next fill (saturate at M)
+          if (fill[b] == M[$clog2(M+1)-1:0]) fill_next = fill[b];
+          else                               fill_next = fill[b] + 1'b1;
 
-          // wait until we have M bits before counting matches
-          if (fill[b] != M[$clog2(M+1)-1:0]) begin
-            fill[b] <= fill[b] + 1'b1;
-          end else begin
-            // OVERLAPPING: count every match, no skipping
-            if (win_next == template_bits) begin
-              hits[b] <= hits[b] + 32'd1;
-            end
+          win[b]  <= win_next;
+          fill[b] <= fill_next;
+
+          // KEY FIX:
+          // count matches as soon as the window becomes valid (fill_next == M)
+          if (fill_next == M[$clog2(M+1)-1:0]) begin
+            if (win_next == template_bits) hits[b] <= hits[b] + 32'd1;
           end
         end
 
         pos <= pos + 1'b1;
       end
-      // after done, hold until next start
     end
   end
 
