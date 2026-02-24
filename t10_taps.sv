@@ -33,9 +33,6 @@ module t10_taps #(
     endcase
   endfunction
 
-  // LFSR step MUST match TB exactly:
-  // lfsr = {lfsr[0],
-  //         lfsr[8]^temp[8], ..., lfsr[1]^temp[1]}
   function automatic logic [L-1:0] lfsr_step(
     input logic [L-1:0] st,
     input logic [L-1:0] mask
@@ -79,10 +76,10 @@ module t10_taps #(
   state_t state;
 
   // search indices
-  logic [3:0]      blk_idx;      // 0..15
-  logic [1:0]      tap_idx;      // 0..3
-  logic [8:0]      seed;         // 1..511
-  logic [6:0]      bit_idx;      // 0..127
+  logic [3:0]      blk_idx;   
+  logic [1:0]      tap_idx;   
+  logic [8:0]      seed;    
+  logic [6:0]      bit_idx;   
   logic [L-1:0]    lfsr;
   logic [L-1:0]    cur_taps;
   logic [BIGM-1:0] blk;
@@ -155,10 +152,10 @@ module t10_taps #(
               // FULL 128-bit match => FAIL
               pass_q    <= 1'b0;
               taps_q    <= {23'b0, cur_taps};
-              blockid_q <= (blk_idx + 1); // TB expects 1-based
+              blockid_q <= (blk_idx + 1);
               state     <= S_DONE_PULSE;
             end else begin
-              // match so far, advance
+              // match so far
               lfsr    <= lfsr_step(lfsr, cur_taps);
               bit_idx <= bit_idx + 1;
             end
@@ -188,7 +185,7 @@ module t10_taps #(
             tap_idx <= 2'd0;
             seed    <= 9'd1;
             if (blk_idx == BIGN-1) begin
-              // no match anywhere => PASS, taps/blockid already 0
+              // no match => PASS
               pass_q    <= 1'b1;
               taps_q    <= 32'h0;
               blockid_q <= 32'h0;
@@ -202,7 +199,7 @@ module t10_taps #(
           end
 
           S_DONE_PULSE: begin
-            done  <= 1'b1;   // one-cycle pulse
+            done  <= 1'b1; 
             state <= S_IDLE;
           end
 
@@ -213,5 +210,3 @@ module t10_taps #(
   end
 
 endmodule
-
-`default_nettype wire
