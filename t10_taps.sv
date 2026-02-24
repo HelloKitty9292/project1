@@ -1,142 +1,217 @@
 `default_nettype none
 
 module t10_taps #(
-  parameter int unsigned N = 2048,  // total bits
-  parameter int unsigned L = 9      // LFSR length
-)(
-  input  logic                  clk,
-  input  logic                  rst_n,
-  input  logic                  en,
-  input  logic                  start,
-  input  logic [N-1:0]          trng,
+  parameter int unsigned N    = 2048,
+  parameter int unsigned L    = 9,
+  parameter int unsigned BIGM = 128,
+  parameter int unsigned BIGN = 16
+) (
+  input  logic             clk,
+  input  logic             rst_n,
+  input  logic             en,
+  input  logic             start,
+  input  logic [N-1:0]     trng,
 
-  output logic                  done,
-  output logic                  pass,
-  output logic [31:0]           taps,
-  output logic [31:0]           blockid
+  output logic             done,
+  output logic             pass,
+  output logic [31:0]      taps,
+  output logic [31:0]      blockid
 );
 
-  // ------------------------------------------------------------
-  // LFSR tap masks to test (given)
-  // NOTE: masks exclude the implicit "+1" term; we include state[0]
-  // in the feedback as: feedback = state[0] ^ ^(state & mask)
-  // ------------------------------------------------------------
+  // Four tap masks (must match TB)
   localparam logic [L-1:0] MASK01 = 9'b0_0001_0000; // x^9 + x^4 + 1
   localparam logic [L-1:0] MASK04 = 9'b0_0010_1100; // x^9 + x^5 + x^3 + x^2 + 1
   localparam logic [L-1:0] MASK06 = 9'b0_0101_1000; // x^9 + x^6 + x^4 + x^3 + 1
   localparam logic [L-1:0] MASK10 = 9'b0_0111_0110; // x^9 + x^6 + x^5 + x^4 + x^2 + x^1 + 1
 
-  localparam int unsigned BIGM        = 128;
-  localparam int unsigned NUM_BLOCKS  = (N / BIGM);  // 16 for N=2048
-  localparam int unsigned NUM_SEEDS   = (1 << L);    // 512 for L=9
+  function automatic logic [L-1:0] tap_sel(input logic [1:0] idx);
+    unique case (idx)
+      2'd0: tap_sel = MASK01;
+      2'd1: tap_sel = MASK04;
+      2'd2: tap_sel = MASK06;
+      default: tap_sel = MASK10;
+    endcase
+  endfunction
 
-  // One-step Fibonacci LFSR (output bit is state[0])
-  function automatic logic [L-1:0] lfsr_step(input logic [L-1:0] s, input logic [L-1:0] mask);
-    logic fb;
+  // LFSR step MUST match TB exactly:
+  // lfsr = {lfsr[0],
+  //         lfsr[8]^temp[8], ..., lfsr[1]^temp[1]}
+  function automatic logic [L-1:0] lfsr_step(
+    input logic [L-1:0] st,
+    input logic [L-1:0] mask
+  );
+    logic l0;
+    l0 = st[0];
+    lfsr_step = {
+      st[0],
+      st[8] ^ (mask[8] & l0),
+      st[7] ^ (mask[7] & l0),
+      st[6] ^ (mask[6] & l0),
+      st[5] ^ (mask[5] & l0),
+      st[4] ^ (mask[4] & l0),
+      st[3] ^ (mask[3] & l0),
+      st[2] ^ (mask[2] & l0),
+      st[1] ^ (mask[1] & l0)
+    };
+  endfunction
+
+  // Extract block k (0..15) from trng = {block0, block1, ..., block15}
+  // block0 lives in trng[2047:1920], block15 lives in trng[127:0]
+  function automatic logic [BIGM-1:0] get_block(input int unsigned k);
+    int unsigned base;
     begin
-      fb = s[0] ^ ^(s & mask);          // include the "+1" term via s[0]
-      lfsr_step = {fb, s[L-1:1]};       // shift right, insert fb at MSB
+      base = (BIGN-1-k) * BIGM;     // k=0 -> base=1920
+      get_block = trng[base +: BIGM]; // grabs [base+127 : base]
     end
   endfunction
 
-  // Extract block i in TB order:
-  // trng = {block0, block1, ... block15} so block0 is MSB slice.
-  function automatic logic [BIGM-1:0] get_block(input int unsigned bi);
-    int unsigned msb;
-    begin
-      msb       = (N - 1) - (bi * BIGM);
-      get_block = trng[msb -: BIGM];
-    end
-  endfunction
+  typedef enum logic [3:0] {
+    S_IDLE,
+    S_INIT,
+    S_NEW_SEED,
+    S_COMPARE,
+    S_NEXT_SEED,
+    S_NEXT_TAP,
+    S_NEXT_BLOCK,
+    S_DONE_PULSE
+  } state_t;
 
-  // ------------------------------------------------------------
-  // Brute force search:
-  // for each block, for each of 4 masks, for each nonzero seed,
-  // generate 128 bits and compare bitwise.
-  //
-  // We do the full search "in one cycle" at start (simulation-friendly).
-  // done pulses for 1 cycle when results are latched.
-  // ------------------------------------------------------------
-  logic        found;
-  logic [31:0] found_blockid;
-  logic [31:0] found_taps;
+  state_t state;
+
+  // search indices
+  logic [3:0]      blk_idx;      // 0..15
+  logic [1:0]      tap_idx;      // 0..3
+  logic [8:0]      seed;         // 1..511
+  logic [6:0]      bit_idx;      // 0..127
+  logic [L-1:0]    lfsr;
+  logic [L-1:0]    cur_taps;
+  logic [BIGM-1:0] blk;
+
+  // outputs regs
+  logic pass_q;
+  logic [31:0] taps_q, blockid_q;
+
+  assign pass    = pass_q;
+  assign taps    = taps_q;
+  assign blockid = blockid_q;
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-      done    <= 1'b0;
-      pass    <= 1'b1;
-      taps    <= 32'd0;
-      blockid <= 32'd0;
+      state     <= S_IDLE;
+      done      <= 1'b0;
+
+      blk_idx   <= '0;
+      tap_idx   <= '0;
+      seed      <= 9'd1;
+      bit_idx   <= '0;
+      lfsr      <= '0;
+
+      pass_q    <= 1'b1;
+      taps_q    <= 32'h0;
+      blockid_q <= 32'h0;
     end else begin
-      done <= 1'b0; // default: pulse only when we finish a run
+      done <= 1'b0; // default
 
-      if (en && start) begin
-        found         = 1'b0;
-        found_blockid = 32'd0;
-        found_taps    = 32'd0;
+      if (!en) begin
+        state <= S_IDLE;
+      end else begin
+        unique case (state)
 
-        // Search blocks in order; stop at first match
-        for (int unsigned b = 0; b < NUM_BLOCKS; b++) begin
-          if (found) break;
+          S_IDLE: begin
+            if (start) begin
+              // clear outputs at start
+              pass_q    <= 1'b1;
+              taps_q    <= 32'h0;
+              blockid_q <= 32'h0;
 
-          logic [BIGM-1:0] blk;
-          blk = get_block(b);
+              blk_idx   <= 4'd0;
+              tap_idx   <= 2'd0;
+              seed      <= 9'd1;
+              bit_idx   <= 7'd0;
 
-          // Try each mask in fixed order
-          for (int unsigned msel = 0; msel < 4; msel++) begin
-            if (found) break;
-
-            logic [L-1:0] mask;
-            unique case (msel)
-              0: mask = MASK01;
-              1: mask = MASK04;
-              2: mask = MASK06;
-              default: mask = MASK10;
-            endcase
-
-            // Try all nonzero seeds
-            for (int unsigned seed = 1; seed < NUM_SEEDS; seed++) begin
-              if (found) break;
-
-              logic match;
-              logic [L-1:0] s;
-              match = 1'b1;
-              s     = logic'(seed[L-1:0]);
-
-              // Compare 128 bits, MSB-first: blk[127] is index 0
-              for (int unsigned k = 0; k < BIGM; k++) begin
-                logic blk_bit;
-                blk_bit = blk[BIGM-1-k];
-                if (blk_bit != s[0]) begin
-                  match = 1'b0;
-                  break;
-                end
-                s = lfsr_step(s, mask);
-              end
-
-              if (match) begin
-                found         = 1'b1;
-                found_blockid = b[31:0];
-                found_taps    = { {(32-L){1'b0}}, mask };
-              end
+              state     <= S_INIT;
             end
           end
-        end
 
-        // Latch outputs
-        if (found) begin
-          pass    <= 1'b0;
-          taps    <= found_taps;
-          blockid <= found_blockid;
-        end else begin
-          pass    <= 1'b1;
-          taps    <= 32'd0;
-          blockid <= 32'd0;
-        end
+          S_INIT: begin
+            // load first block and taps
+            blk      <= get_block(blk_idx);
+            cur_taps <= tap_sel(tap_idx);
+            state    <= S_NEW_SEED;
+          end
 
-        done <= 1'b1; // pulse
+          S_NEW_SEED: begin
+            // initialize for this (block, taps, seed)
+            lfsr    <= seed;
+            bit_idx <= 7'd0;
+            state   <= S_COMPARE;
+          end
+
+          S_COMPARE: begin
+            // compare current bit
+            if (blk[bit_idx] !== lfsr[0]) begin
+              state <= S_NEXT_SEED;
+            end else if (bit_idx == BIGM-1) begin
+              // FULL 128-bit match => FAIL
+              pass_q    <= 1'b0;
+              taps_q    <= {23'b0, cur_taps};
+              blockid_q <= (blk_idx + 1); // TB expects 1-based
+              state     <= S_DONE_PULSE;
+            end else begin
+              // match so far, advance
+              lfsr    <= lfsr_step(lfsr, cur_taps);
+              bit_idx <= bit_idx + 1;
+            end
+          end
+
+          S_NEXT_SEED: begin
+            if (seed == 9'd511) begin
+              state <= S_NEXT_TAP;
+            end else begin
+              seed  <= seed + 1;
+              state <= S_NEW_SEED;
+            end
+          end
+
+          S_NEXT_TAP: begin
+            seed <= 9'd1;
+            if (tap_idx == 2'd3) begin
+              state <= S_NEXT_BLOCK;
+            end else begin
+              tap_idx <= tap_idx + 1;
+              cur_taps <= tap_sel(tap_idx + 1);
+              state <= S_NEW_SEED;
+            end
+          end
+
+          S_NEXT_BLOCK: begin
+            tap_idx <= 2'd0;
+            seed    <= 9'd1;
+            if (blk_idx == BIGN-1) begin
+              // no match anywhere => PASS, taps/blockid already 0
+              pass_q    <= 1'b1;
+              taps_q    <= 32'h0;
+              blockid_q <= 32'h0;
+              state     <= S_DONE_PULSE;
+            end else begin
+              blk_idx <= blk_idx + 1;
+              blk     <= get_block(blk_idx + 1);
+              cur_taps <= tap_sel(2'd0);
+              state   <= S_NEW_SEED;
+            end
+          end
+
+          S_DONE_PULSE: begin
+            done  <= 1'b1;   // one-cycle pulse
+            state <= S_IDLE;
+          end
+
+          default: state <= S_IDLE;
+        endcase
       end
     end
   end
 
 endmodule
+
+`default_nettype wire
