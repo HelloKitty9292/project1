@@ -13,10 +13,10 @@ module t2_frequency #(parameter SMALLN = 2048, parameter BIGM = 128, parameter B
   output logic [31:0]  c1hi,
   output logic [31:0]  c1lo
 );
-  logic [31:0]        low_d, high_d, new_low, new_high, one_q, all_q;
-  logic [SMALLN-1:0 ] bit_q;
-  logic               reghi_en, reglo_en, one_en, one_ld, all_en, all_ld, 
-                      sh_ld, sh_en;
+  logic [31:0] low_d, high_d, new_low, new_high, one_q, all_q;
+  logic        bit_q;
+  logic        reghi_en, reglo_en, one_en, one_ld, all_en, all_ld, 
+               sh_ld, sh_en;
   p2s_shiftreg #(.WIDTH(SMALLN)) trng_reg2 (.clock(clk), .reset_n(rst_n), .D(trng),
               .ld(sh_ld), .en(sh_en), .Q(bit_q));
 
