@@ -1,154 +1,109 @@
 `default_nettype none
 
-module t7_nonoverlap_template #(
-  parameter int unsigned SMALLN = 2048,
-  parameter int unsigned BIGM   = 128,
-  parameter int unsigned BIGN   = 16,
-  parameter int unsigned SMALLM = 9
-) (
-  input  logic                 clk,
-  input  logic                 rst_n,
-  input  logic                 en,
-  input  logic                 start,
+module t7_template_hits #(
+  parameter int unsigned N    = 2048,
+  parameter int unsigned BIGM = 128,
+  parameter int unsigned M    = 9   // template length
+)(
+  input  logic                   clk,
+  input  logic                   rst_n,
+  input  logic                   en,
+  input  logic                   start,
+  input  logic [N-1:0]           trng,
+  input  logic [31:0]            hits_th,
+  input  logic [M-1:0]           template_bits,
 
-  input  logic [SMALLN-1:0]    trng,
-  input  logic [SMALLM-1:0]    template,
-  input  logic [31:0]          hits_th,
-
-  output logic                 done,
-  output logic                 pass,
-
-  // hits_flat[(i*32)+:32] is block i hits
-  output logic [BIGN*32-1:0]   hits_flat
+  output logic                   done,
+  output logic                   pass,
+  output logic [31:0]            hits [0:(N/BIGM)-1]
 );
 
-  // -----------------------------
-  // Sanity checks (elaboration)
-  // -----------------------------
-  initial begin
-    if (SMALLN != BIGN*BIGM) $fatal(1, "T7: require SMALLN==BIGN*BIGM (%0d != %0d*%0d)", SMALLN, BIGN, BIGM);
-    if (SMALLM == 0 || SMALLM > BIGM) $fatal(1, "T7: bad SMALLM (%0d) vs BIGM (%0d)", SMALLM, BIGM);
-  end
+  localparam int unsigned NBLOCKS   = N / BIGM;
+  localparam int unsigned POS_W     = $clog2(BIGM+1);
+  localparam int unsigned SKIP_W    = (M <= 2) ? 1 : $clog2(M);
 
-  // ----------------------------------------------------------
-  // Access TRNG blocks: trng = {block0, block1, ... block(BIGN-1)}
-  // block0 is the MSB BIGM bits (same as your TB concatenation).
-  // ----------------------------------------------------------
-  function automatic logic [BIGM-1:0] get_block(input int unsigned idx);
-    int unsigned base;
+  logic [POS_W-1:0] pos;
+  logic [M-1:0]     win   [0:NBLOCKS-1];
+  logic [SKIP_W-1:0]skip  [0:NBLOCKS-1];
+  logic [$clog2(M+1)-1:0] fill [0:NBLOCKS-1];
+
+  // MSB-first within each 128b block, and block0 is the MSB-most slice of trng,
+  // matching TB's {trngblock0,...,trngblock15} concatenation.
+  function automatic logic trng_bit(input int unsigned blk, input int unsigned p);
+    int unsigned base_msb;
     begin
-      base = SMALLN - (idx+1)*BIGM;
-      get_block = trng[base +: BIGM];
+      base_msb = (N-1) - blk*BIGM;         // MSB index of block blk
+      trng_bit = trng[base_msb - p];       // walk MSB->LSB as p increases
     end
   endfunction
 
-  // ----------------------------------------------------------
-  // Count non-overlapping template hits in one BIGM-bit block
-  // Non-overlap: on hit, advance by SMALLM; else advance by 1
-  // We interpret "window" on consecutive bits in the block vector.
-  // This uses LSB-based indexing block[pos +: SMALLM].
-  // If your professor expects MSB-based scanning, flip pos indexing.
-  // ----------------------------------------------------------
-  function automatic logic [31:0] count_hits_block(
-    input logic [BIGM-1:0] blk,
-    input logic [SMALLM-1:0] templ
-  );
-    int unsigned pos;
-    logic [31:0] hits;
-    begin
-      hits = 32'd0;
-      pos  = 0;
-
-      // last valid start = BIGM - SMALLM
-      while (pos + SMALLM <= BIGM) begin
-        if (blk[pos +: SMALLM] == templ) begin
-          hits = hits + 32'd1;
-          pos  = pos + SMALLM;   // non-overlapping jump
-        end else begin
-          pos  = pos + 1;
-        end
-      end
-
-      count_hits_block = hits;
-    end
-  endfunction
-
-  // ----------------------------
-  // FSM
-  // ----------------------------
-  typedef enum logic [1:0] {S_IDLE, S_COMPUTE, S_DONE} state_t;
-  state_t state, next_state;
-
-  logic [BIGN*32-1:0] hits_d_flat;
-  logic [31:0]        max_hits_d;
-
-  // combinational compute for all blocks
+  // combinational max for pass
+  logic [31:0] max_hits;
   always_comb begin
-    hits_d_flat = '0;
-    max_hits_d  = 32'd0;
-
-    for (int unsigned i = 0; i < BIGN; i++) begin
-      logic [BIGM-1:0] blk;
-      logic [31:0]     h;
-
-      blk = get_block(i);
-      h   = count_hits_block(blk, template);
-
-      hits_d_flat[i*32 +: 32] = h;
-      if (h > max_hits_d) max_hits_d = h;
+    max_hits = 32'd0;
+    for (int i = 0; i < NBLOCKS; i++) begin
+      if (hits[i] > max_hits) max_hits = hits[i];
     end
   end
 
-  // state register + result registers
+  // done/pass
+  always_comb begin
+    done = (pos == BIGM[POS_W-1:0]);
+    pass = done && (max_hits <= hits_th);
+  end
+
+  // main scan
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-      state     <= S_IDLE;
-      hits_flat <= '0;
+      pos <= '0;
+      for (int b = 0; b < NBLOCKS; b++) begin
+        hits[b] <= 32'd0;
+        win[b]  <= '0;
+        skip[b] <= '0;
+        fill[b] <= '0;
+      end
     end else begin
-      state <= next_state;
+      if (start && en) begin
+        pos <= '0;
+        for (int b = 0; b < NBLOCKS; b++) begin
+          hits[b] <= 32'd0;
+          win[b]  <= '0;
+          skip[b] <= '0;
+          fill[b] <= '0;
+        end
+      end else if (en && (pos != BIGM[POS_W-1:0])) begin
+        // process one bit position per cycle across all blocks
+        for (int b = 0; b < NBLOCKS; b++) begin
+          logic bit_in;
+          logic [M-1:0] win_next;
 
-      if (state == S_COMPUTE) begin
-        hits_flat <= hits_d_flat;     // latch per-block hit counts
+          bit_in   = trng_bit(b, pos);
+          win_next = {win[b][M-2:0], bit_in};
+
+          // shift window always
+          win[b] <= win_next;
+
+          // fill up to M bits before matching
+          if (fill[b] != M[$clog2(M+1)-1:0]) begin
+            fill[b] <= fill[b] + 1'b1;
+          end else begin
+            // window valid: apply non-overlap skipping
+            if (skip[b] != '0) begin
+              skip[b] <= skip[b] - 1'b1;
+            end else begin
+              if (win_next == template_bits) begin
+                hits[b] <= hits[b] + 32'd1;
+                // after a hit, skip the next (M-1) window positions
+                if (M > 1) skip[b] <= SKIP_W'(M-1);
+              end
+            end
+          end
+        end
+
+        pos <= pos + 1'b1;
       end
+      // else: hold state after done until next start
     end
-  end
-
-  // outputs and next-state
-  always_comb begin
-    done = 1'b0;
-    pass = 1'b0;
-
-    unique case (state)
-      S_IDLE: begin
-        done = 1'b0;
-        pass = 1'b0;
-      end
-
-      S_COMPUTE: begin
-        done = 1'b0;
-        pass = 1'b0;
-      end
-
-      S_DONE: begin
-        done = 1'b1;
-        // pass/fail by ceiling on highest block hits
-        pass = (max_hits_d <= hits_th);
-      end
-
-      default: begin
-        done = 1'b0;
-        pass = 1'b0;
-      end
-    endcase
-  end
-
-  always_comb begin
-    unique case (state)
-      S_IDLE:    next_state = (en && start) ? S_COMPUTE : S_IDLE;
-      S_COMPUTE: next_state = S_DONE;
-      S_DONE:    next_state = en ? S_DONE : S_IDLE;
-      default:   next_state = S_IDLE;
-    endcase
   end
 
 endmodule
