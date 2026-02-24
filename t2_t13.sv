@@ -1,31 +1,5 @@
 `default_nettype none
 
-module t4_longrun #(parameter int unsigned N = 2048) (
-  input  logic         clk,
-  input  logic         rst_n,
-  input  logic         en,
-  input  logic         start,
-  input  logic [N-1:0] trng,
-  input  logic [31:0]  chi_th,
-  output logic         done,
-  output logic         pass,
-  output logic [31:0]  rlte4,
-  output logic [31:0]  rof5,
-  output logic [31:0]  rof6,
-  output logic [31:0]  rof7,
-  output logic [31:0]  rof8,
-  output logic [31:0]  rgte9
-);
-  assign done  = 1'b1;
-  assign pass  = 1'b0;
-  assign rlte4 = 32'h0;
-  assign rof5  = 32'h0;
-  assign rof6  = 32'h0;
-  assign rof7  = 32'h0;
-  assign rof8  = 32'h0;
-  assign rgte9 = 32'h0;
-endmodule
-
 module t5_rank #(parameter int unsigned N = 2048, parameter int unsigned M = 128) (
   input  logic         clk,
   input  logic         rst_n,

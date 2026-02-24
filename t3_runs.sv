@@ -1,27 +1,5 @@
 `default_nettype none
 
-// module t3_runs #(parameter int unsigned N = 2048) (
-//   input  logic         clk,
-//   input  logic         rst_n,
-//   input  logic         en,
-//   input  logic         start,
-//   input  logic [N-1:0] trng,
-//   input  logic [31:0]  lr_th,
-//   output logic         done,
-//   output logic         pass,
-//   output logic [31:0]  lr1,
-//   output logic [31:0]  lr0,
-//   output logic [31:0]  nr1,
-//   output logic [31:0]  nr0
-// );
-//   assign done = 1'b1;
-//   assign pass = 1'b0;
-//   assign lr1  = 32'h0;
-//   assign lr0  = 32'h0;
-//   assign nr1  = 32'h0;
-//   assign nr0  = 32'h0;
-// endmodule
-
 module t3_runs #(parameter SMALLN = 2048) (
   input  logic              clk,
   input  logic              rst_n,

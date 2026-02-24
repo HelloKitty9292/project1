@@ -407,7 +407,7 @@ module trng_wrapper #(
     .nr0   (t3_nr0_w)
   );
 
-  t4_longrun #(.N(SMALLN)) u_t4 (
+  t4_blockrun #(.N(SMALLN)) u_t4 (
     .clk    (clk),
     .rst_n  (rst_n),
     .en     (t4_en),
