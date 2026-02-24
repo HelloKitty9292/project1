@@ -99,8 +99,8 @@ module t1_frequency #(parameter int unsigned N = 2048) (
     endcase
   end
 
-  always_comb begin
-    if (state == DONE) $display("done state reached for T1");
-  end
+  // always_comb begin
+  //   if (state == DONE) $display("done state reached for T1");
+  // end
 
 endmodule

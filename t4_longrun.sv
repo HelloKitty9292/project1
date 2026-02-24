@@ -17,9 +17,20 @@ module t4_blockrun #(parameter SMALLN = 2048, parameter BIGM = 128, parameter BI
   output logic [31:0]  rgte9
 );
   logic [31:0] cnt;
-  assign done = (cnt == BIGM);
+  logic        done_int;
+  logic        done_q;
+
   counter #(.WIDTH(32)) cnt_block (.clock(clk), .reset_n(rst_n), .D(32'd0),
-          .en((!start) && en && (!done)), .ld((start && en) || done), .Q(cnt));
+          .en((!start) && en && !done_int), .ld(start && en), .Q(cnt));
+
+  assign done_int = ((!start) && en && (cnt == (BIGM-1)));
+
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) done_q <= 1'b0;
+    else        done_q <= done_int;
+  end
+
+  assign done = done_q;
 
   logic [BIGN-1:0] bit_q;
   logic [BIGN-1:0] block_lte4, block_of5, block_of6, block_of7, block_of8, block_gte9;
@@ -29,15 +40,15 @@ module t4_blockrun #(parameter SMALLN = 2048, parameter BIGM = 128, parameter BI
   for (i = 0; i < BIGN ; i = i + 1) begin: t4gen
     p2s_shiftreg #(.WIDTH(BIGM)) trng_sr (.clock(clk), .reset_n(rst_n),
                 .D(trng[((i+1)*BIGM-1):(i*BIGM)]), 
-                .ld((!start) && en && (!done)), .en((!start) && en), .Q(bit_q[i]));
+                .ld(start && en), .en((!start) && en && (!done_int)), .Q(bit_q[i]));
     runs456789 runs (.clk(clk), .rst_n(rst_n), 
-                  .start(start), .en(en), .done(done),
+                  .start(start), .en(en), .done(done_int),
                   .bit_q(bit_q[i]), 
                   .rlte4(block_lte4[i]), .rof5(block_of5[i]),
                   .rof6(block_of6[i]), .rof7(block_of7[i]),
                   .rof8(block_of8[i]), .rofgte9(block_gte9[i]));
   end
-  endgenerate : t4_blockrun
+  endgenerate
   
   always_comb begin
     rlte4 = 32'd0;
@@ -59,11 +70,12 @@ module t4_blockrun #(parameter SMALLN = 2048, parameter BIGM = 128, parameter BI
   logic [63:0] chi_value;
   always_comb begin
     chi_value = almost_chi_t4(rlte4, rof5, rof6, rof7, rof8, rgte9, BIGN);
-    pass      = pass = done && (chi_value <= {32'd0, chi_th});
+    pass = done && (chi_value <= {32'd0, chi_th});
   end
 endmodule : t4_blockrun
+`default_nettype none
 
-module runs456789 #(parameter BIGM = 128) (
+module runs456789 (
   input  logic clk,
   input  logic rst_n,
   input  logic en,
@@ -79,39 +91,50 @@ module runs456789 #(parameter BIGM = 128) (
   output logic rofgte9
 );
 
-  logic       curr_bit;
-  logic [3:0] curr_run, max_run;
+  logic [3:0] ones_run;
+  logic [3:0] max_ones_run;
 
-  always_ff @(posedge clk or negedge rst_n) begin
+  function automatic logic [3:0] sat_inc9(input logic [3:0] x);
+    if (x >= 4'd9) sat_inc9 = 4'd9;
+    else           sat_inc9 = x + 4'd1;
+  endfunction
+
+  always_ff @(posedge clk, negedge rst_n) begin
     if (!rst_n) begin
-      rlte4   <= 1'b0;
-      rof5    <= 1'b0;
-      rof6    <= 1'b0;
-      rof7    <= 1'b0;
-      rof8    <= 1'b0;
-      rofgte9 <= 1'b0;
+      ones_run     <= 4'd0;
+      max_ones_run <= 4'd0;
 
-      curr_bit <= 1'b0;
-      curr_run <= 4'd0;
-      max_run  <= 4'd0;
+      rlte4        <= 1'b0;
+      rof5         <= 1'b0;
+      rof6         <= 1'b0;
+      rof7         <= 1'b0;
+      rof8         <= 1'b0;
+      rofgte9      <= 1'b0;
+
     end else begin
       if (start && en) begin
-        curr_bit <= bit_q;
-        curr_run <= 4'd1;
-        max_run  <= 4'd1;
-      end else if (en) begin
-        if (!(bit_q ^ curr_bit)) begin
-          if (curr_run != 4'd9) curr_run <= curr_run + 4'd1;
-          if ((maxrun != 4'd9) && ((curr_run + 4'd1) > max_run)) max_run <= (curr_run + 4'd1);
+        ones_run     <= 4'd0;
+        max_ones_run <= 4'd0;
+
+        rlte4        <= 1'b0;
+        rof5         <= 1'b0;
+        rof6         <= 1'b0;
+        rof7         <= 1'b0;
+        rof8         <= 1'b0;
+        rofgte9      <= 1'b0;
+      end
+      else if (en) begin
+        if (bit_q) begin
+          ones_run <= sat_inc9(ones_run);
+          if (sat_inc9(ones_run) > max_ones_run)
+            max_ones_run <= sat_inc9(ones_run);
         end else begin
-          curr_bit <= bit_q;
-          curr_run <= 4'd1;
-          if (4'd1 > max_run) max_run <= 4'd1;
+          ones_run <= 4'd0;
         end
       end
 
       if (done) begin
-        unique case (max_run)
+        unique case (max_ones_run)
           4'd0, 4'd1, 4'd2, 4'd3, 4'd4: begin
             rlte4   <= 1'b1;
             rof5    <= 1'b0;
@@ -192,47 +215,3 @@ function automatic logic [63:0] almost_chi_t4 (
     almost_chi_t4 = s0 + s1 + s2 + s3 + s4 + s5;
   end
 endfunction
-
-// module runs456789(input  logic clk, rst_n,
-//                   input  logic start, en, done,
-//                   input  logic bit_q, 
-//                   output logic rlte4, rof5, rof6, rof7, rof8, rofgte9);
-//   logic [3:0] currRun;
-//   logic       currBit;
-//   always_ff @(posedge clk, negedge rst_n) begin
-//     if (~rst_n || (start && en)) begin
-//       rlte4   = 1'b0;
-//       rof5    = 1'b0;
-//       rof6    = 1'b0;
-//       rof7    = 1'b0;
-//       rof8    = 1'b0;
-//       rofgte9 = 1'b0;
-//       currRun = 4'd0;
-//       currBit = 1'b0;
-//     end else if (done) begin
-//       currBit <= 1'b0;
-//       currRun <= 4'd0;
-//       rlte4   <= rlte4  ;
-//       rof5    <= rof5   ;
-//       rof6    <= rof6   ;
-//       rof7    <= rof7   ;
-//       rof8    <= rof8   ;
-//       rofgte9 <= rofgte9;
-//     end else if (en) begin
-//       if (bit_q ^ currBit) begin
-//         currBit <= bit_q;
-//         currRun <= 4'd1;
-//         unique case (currRun)
-//           1,2,3,4: rlte4   <= 1'b1;
-//           5:       rof5    <= 1'b1;
-//           6:       rof6    <= 1'b1;
-//           7:       rof7    <= 1'b1;
-//           8:       rof8    <= 1'b1;
-//           default: rofgte9 <= 1'b1;
-//         endcase
-//       end else begin
-//         currRun <= ((currRun + 1) > 4'd9) ? 4'd9 : (currRun + 1);
-//       end
-//     end
-//   end
-// endmodule : runs456789
