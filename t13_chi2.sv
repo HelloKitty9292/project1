@@ -7,8 +7,8 @@ module t13_chi2 #(
   input  logic             rst_n,
   input  logic             en,
   input  logic             start,
-  input  logic [N-1:0]      trng,
-  input  logic [31:0]       cth,
+  input  logic [N-1:0]     trng,
+  input  logic [31:0]      cth,
 
   output logic             done,
   output logic             pass,
@@ -16,27 +16,43 @@ module t13_chi2 #(
   output logic [31:0]      clo
 );
 
-  typedef enum logic [1:0] { IDLE, RUN, FINISH } state_t;
+  typedef enum logic [1:0] { IDLE, RUN, PUBLISH, DONE } state_t;
   state_t state;
 
-  // We need signed math for min/max tracking
-  logic signed [31:0] sum_s;
-  logic signed [31:0] max_s;
-  logic signed [31:0] min_s;
-
+  // signed walk state
+  logic signed [31:0] sum_s, max_s, min_s;
   logic [$clog2(N)-1:0] idx;
 
-  // Output regs
-  logic pass_q;
+  // registered outputs
+  logic        pass_q;
   logic [31:0] chi_q, clo_q;
 
   assign pass = pass_q;
   assign chi  = chi_q;
   assign clo  = clo_q;
 
-  // helper: signed threshold
+  // Threshold is conceptually unsigned positive in your TB
+  logic [31:0] cth_u;
   logic signed [31:0] cth_s;
+  assign cth_u = cth;
   assign cth_s = $signed(cth);
+
+  // MSB-first across whole vector:
+  // idx=0 uses trng[N-1], idx=N-1 uses trng[0]
+  logic bit_cur;
+  always_comb bit_cur = trng[N-1-idx];
+
+  function automatic logic [31:0] abs32(input logic signed [31:0] v);
+    logic signed [31:0] mag_s;
+    begin
+      mag_s = (v < 0) ? -v : v;     // still signed, but non-negative now
+      abs32 = $unsigned(mag_s);     // export magnitude as unsigned 32-bit
+    end
+  endfunction
+
+  // predeclared temps (tool-friendly)
+  logic signed [31:0] step_s;
+  logic signed [31:0] sum_next;
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -44,76 +60,78 @@ module t13_chi2 #(
       done   <= 1'b0;
 
       idx    <= '0;
-      sum_s  <= '0;
-      max_s  <= '0;
-      min_s  <= '0;
+      sum_s  <= 32'sd0;
+      max_s  <= 32'sd0;
+      min_s  <= 32'sd0;
 
       pass_q <= 1'b0;
       chi_q  <= 32'h0;
       clo_q  <= 32'h0;
+
     end else begin
-      done <= 1'b0; // default: pulse only
+      done <= 1'b0; // pulse only
 
-      if (!en) begin
-        state <= IDLE;
-      end else begin
-        unique case (state)
+      // default temps
+      step_s   = 32'sd0;
+      sum_next = sum_s;
 
-          IDLE: begin
-            if (start) begin
-              // initialize walk
-              idx   <= '0;
-              sum_s <= 32'sd0;
-              max_s <= 32'sd0;
-              min_s <= 32'sd0;
+      unique case (state)
 
-              // clear outputs for this run
-              pass_q <= 1'b0;
-              chi_q  <= 32'h0;
-              clo_q  <= 32'h0;
+        IDLE: begin
+          if (en && start) begin
+            idx   <= '0;
+            sum_s <= 32'sd0;
+            max_s <= 32'sd0;
+            min_s <= 32'sd0;
 
-              state <= RUN;
-            end
+            // clear outputs for this run
+            pass_q <= 1'b0;
+            chi_q  <= 32'h0;
+            clo_q  <= 32'h0;
+
+            state <= RUN;
           end
+        end
 
-          RUN: begin
-            // next sum = sum + (bit?+1:-1)
-            logic signed [31:0] sum_next;
-            sum_next = sum_s + (trng[idx] ? 32'sd1 : -32'sd1);
+        RUN: begin
+          // one step of the walk
+          step_s   = bit_cur ? 32'sd1 : -32'sd1;
+          sum_next = sum_s + step_s;
 
-            // update max/min with sum_next (important: include the new step)
-            if (sum_next > max_s) max_s <= sum_next;
-            if (sum_next < min_s) min_s <= sum_next;
+          // extrema include the NEW sum
+          if (sum_next > max_s) max_s <= sum_next;
+          if (sum_next < min_s) min_s <= sum_next;
 
-            sum_s <= sum_next;
+          sum_s <= sum_next;
 
-            if (idx == N-1) begin
-              state <= FINISH;
-            end else begin
-              idx <= idx + 1'b1;
-            end
+          if (idx == N-1) begin
+            state <= PUBLISH;
+          end else begin
+            idx <= idx + 1'b1;
           end
+        end
 
-          FINISH: begin
-            // Pass if within +/-CTH
-            // i.e., max <= cth AND min >= -cth
-            logic signed [31:0] neg_cth;
-            neg_cth = -cth_s;
+        PUBLISH: begin
+          // CHI is max (>=0), CLO is magnitude of min (>=0)
+          chi_q <= $unsigned(max_s);
+          clo_q <= abs32(min_s);
 
-            pass_q <= ((max_s <= cth_s) && (min_s >= neg_cth));
+          // Pass if BOTH peaks are within threshold magnitude
+          // max_s is signed (>=0), compare to signed threshold
+          // abs(min_s) is unsigned magnitude, compare to unsigned threshold
+          pass_q <= (($unsigned(max_s) <= cth_u) && (abs32(min_s) <= cth_u));
 
-            // Export CHI/CLO as raw two's-complement signed values in 32-bit regs
-            chi_q <= $unsigned(max_s);
-            clo_q <= $unsigned(min_s);
+          state <= DONE;
+        end
 
-            done  <= 1'b1; // one-cycle done pulse
-            state <= IDLE;
-          end
+        DONE: begin
+          done  <= 1'b1;   // 1-cycle pulse AFTER outputs are stable
+          state <= IDLE;
+        end
 
-          default: state <= IDLE;
+        default: state <= IDLE;
 
-        endcase
-      end
+      endcase
     end
   end
 

@@ -355,7 +355,7 @@ always begin
 end
 
 always @(clocks) begin
-	if (clocks == 40000) begin
+	if (clocks == 4000000) begin
 		$display("**T13_HANG**: T13 testbench did not finish?");
 		err_count += 1;
 		$stop();

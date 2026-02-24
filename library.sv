@@ -41,3 +41,18 @@ module counter #(parameter WIDTH = 32) (
     else if (ld) Q <= D;
     else if (en) Q <= Q+ 1'b1;
 endmodule
+
+function automatic int unsigned myclog2 (input int unsigned value);
+  int unsigned v;
+  int unsigned r;
+  begin
+    if (value <= 1) return 0;
+    v = value - 1;
+    r = 0;
+    while (v > 0) begin
+      v >>= 1;
+      r++;
+    end
+    return r;
+  end
+endfunction

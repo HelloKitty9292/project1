@@ -1,39 +1,37 @@
 `default_nettype none
 
 module t7_template_hits #(
-  parameter int unsigned N    = 2048,
-  parameter int unsigned BIGM = 128,
-  parameter int unsigned M    = 9   // template length
+  parameter SMALLN = 2048,
+  parameter BIGM = 128,
+  parameter SMALLM = 9
 )(
   input  logic                   clk,
   input  logic                   rst_n,
   input  logic                   en,
   input  logic                   start,
-  input  logic [N-1:0]           trng,
+  input  logic [SMALLN-1:0]      trng,
   input  logic [31:0]            hits_th,
-  input  logic [M-1:0]           template_bits,
+  input  logic [SMALLM-1:0]      template_bits,
 
   output logic                   done,
   output logic                   pass,
-  output logic [31:0]            hits [0:(N/BIGM)-1]
+  output logic [31:0]            hits [0:(SMALLN/BIGM)-1]
 );
 
-  localparam int unsigned NBLOCKS   = N / BIGM;
-  localparam int unsigned POS_W     = $clog2(BIGM+1);
-  localparam int unsigned SKIP_W    = (M <= 2) ? 1 : $clog2(M);
+  localparam int unsigned NBLOCKS = SMALLN / BIGM;
+  localparam int unsigned POS_W   = myclog2(BIGM+1);
+  localparam int unsigned SKIP_W  = (SMALLM <= 2) ? 1 : myclog2(SMALLM);
 
-  logic [POS_W-1:0] pos;
-  logic [M-1:0]     win   [0:NBLOCKS-1];
-  logic [SKIP_W-1:0]skip  [0:NBLOCKS-1];
-  logic [$clog2(M+1)-1:0] fill [0:NBLOCKS-1];
+  logic [POS_W-1:0]             pos;
+  logic [SMALLM-1:0]            win[0:NBLOCKS-1];
+  logic [SKIP_W-1:0]            skip[0:NBLOCKS-1];
+  logic [myclog2(SMALLM+1)-1:0] fill[0:NBLOCKS-1];
 
-  // MSB-first within each 128b block, and block0 is the MSB-most slice of trng,
-  // matching TB's {trngblock0,...,trngblock15} concatenation.
   function automatic logic trng_bit(input int unsigned blk, input int unsigned p);
     int unsigned base_msb;
     begin
-      base_msb = (N-1) - blk*BIGM;         // MSB index of block blk
-      trng_bit = trng[base_msb - p];       // walk MSB->LSB as p increases
+      base_msb = (SMALLN-1) - blk*BIGM; // MSB index of block
+      trng_bit = trng[base_msb - p];
     end
   endfunction
 
@@ -75,16 +73,16 @@ module t7_template_hits #(
         // process one bit position per cycle across all blocks
         for (int b = 0; b < NBLOCKS; b++) begin
           logic bit_in;
-          logic [M-1:0] win_next;
+          logic [SMALLM-1:0] win_next;
 
           bit_in   = trng_bit(b, pos);
-          win_next = {win[b][M-2:0], bit_in};
+          win_next = {win[b][SMALLM-2:0], bit_in};
 
-          // shift window always
+          // shift window
           win[b] <= win_next;
 
-          // fill up to M bits before matching
-          if (fill[b] != M[$clog2(M+1)-1:0]) begin
+          // fill up to SMALLM bits before matching
+          if (fill[b] != SMALLM[myclog2(SMALLM+1)-1:0]) begin
             fill[b] <= fill[b] + 1'b1;
           end else begin
             // window valid: apply non-overlap skipping
@@ -93,8 +91,8 @@ module t7_template_hits #(
             end else begin
               if (win_next == template_bits) begin
                 hits[b] <= hits[b] + 32'd1;
-                // after a hit, skip the next (M-1) window positions
-                if (M > 1) skip[b] <= SKIP_W'(M-1);
+                // after a hit, skip the next (SMALLM-1) window positions
+                if (SMALLM > 1) skip[b] <= SKIP_W'(SMALLM-1);
               end
             end
           end
@@ -102,7 +100,6 @@ module t7_template_hits #(
 
         pos <= pos + 1'b1;
       end
-      // else: hold state after done until next start
     end
   end
 
