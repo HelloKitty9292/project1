@@ -1,22 +1,5 @@
 `default_nettype none
 
-module t5_rank #(parameter int unsigned N = 2048, parameter int unsigned M = 128) (
-  input  logic         clk,
-  input  logic         rst_n,
-  input  logic         en,
-  input  logic         start,
-  input  logic [N-1:0] trng,
-  output logic         done,
-  output logic         pass,
-  output logic [31:0]  rfull,
-  output logic [31:0]  rfullm1
-);
-  assign done    = 1'b1;
-  assign pass    = 1'b0;
-  assign rfull   = 32'h0;
-  assign rfullm1 = 32'h0;
-endmodule
-
 module t7_template_hits #(
   parameter int unsigned N = 2048,
   parameter int unsigned M = 9
