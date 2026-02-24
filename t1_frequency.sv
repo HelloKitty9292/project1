@@ -61,8 +61,8 @@ module t1_frequency #(parameter int unsigned N = 2048) (
         sh_ld = 1'b0;
         sh_en = en;
         c_ld  = 1'b0;
-        c0_en = (en && (bit_q == 1'b0));
-        c1_en = (en && (bit_q == 1'b1));
+        c0_en = !(sum_q == N[31:0]) && (en && (bit_q == 1'b0));
+        c1_en = !(sum_q == N[31:0]) && (en && (bit_q == 1'b1));
         done = 1'b0;
         pass = 1'b0;
       end
