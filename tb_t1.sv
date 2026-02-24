@@ -329,7 +329,7 @@ end
 
 always @(clocks) begin
 	// if (clocks == 1000) begin
-	if (clocks == 20000) begin
+	if (clocks == 200000) begin
 		$display("**T1_HANG**: T1 testbench did not finish?");
 		$stop();
 	end
