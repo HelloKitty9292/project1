@@ -31,22 +31,28 @@ module t13_chi2 #(
   assign chi  = chi_q;
   assign clo  = clo_q;
 
+  // Threshold is conceptually unsigned positive in your TB
+  logic [31:0] cth_u;
   logic signed [31:0] cth_s;
+  assign cth_u = cth;
   assign cth_s = $signed(cth);
 
-  // IMPORTANT: bit order
-  // Use MSB-first across the entire 2048-bit vector:
-  // i=0 => trng[N-1], i=N-1 => trng[0]
+  // MSB-first across whole vector:
+  // idx=0 uses trng[N-1], idx=N-1 uses trng[0]
   logic bit_cur;
   always_comb bit_cur = trng[N-1-idx];
 
   function automatic logic [31:0] abs32(input logic signed [31:0] v);
-    logic signed [31:0] negv;
+    logic signed [31:0] mag_s;
     begin
-      negv  = -v;
-      abs32 = (v < 0) ? logic'(negv) : logic'(v);
+      mag_s = (v < 0) ? -v : v;     // still signed, but non-negative now
+      abs32 = $unsigned(mag_s);     // export magnitude as unsigned 32-bit
     end
   endfunction
+
+  // predeclared temps (tool-friendly)
+  logic signed [31:0] step_s;
+  logic signed [31:0] sum_next;
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -63,12 +69,15 @@ module t13_chi2 #(
       clo_q  <= 32'h0;
 
     end else begin
-      done <= 1'b0; // default (pulse only)
+      done <= 1'b0; // pulse only
+
+      // default temps
+      step_s   = 32'sd0;
+      sum_next = sum_s;
 
       unique case (state)
 
         IDLE: begin
-          // only allow starting when en=1
           if (en && start) begin
             idx   <= '0;
             sum_s <= 32'sd0;
@@ -85,21 +94,17 @@ module t13_chi2 #(
         end
 
         RUN: begin
-          // ignore en while running
-          logic signed [31:0] step_s;
-          logic signed [31:0] sum_next;
-
+          // one step of the walk
           step_s   = bit_cur ? 32'sd1 : -32'sd1;
           sum_next = sum_s + step_s;
 
-          // update extrema using the new sum
+          // extrema include the NEW sum
           if (sum_next > max_s) max_s <= sum_next;
           if (sum_next < min_s) min_s <= sum_next;
 
           sum_s <= sum_next;
 
           if (idx == N-1) begin
-            // all bits processed; extrema are now final (registered)
             state <= PUBLISH;
           end else begin
             idx <= idx + 1'b1;
@@ -107,19 +112,20 @@ module t13_chi2 #(
         end
 
         PUBLISH: begin
-          // Update outputs NOW (one full cycle before done pulses)
           // CHI is max (>=0), CLO is magnitude of min (>=0)
-          chi_q  <= $unsigned(max_s);
-          clo_q  <= abs32(min_s);
+          chi_q <= $unsigned(max_s);
+          clo_q <= abs32(min_s);
 
-          pass_q <= (max_s <= cth_s) && (abs32(min_s) <= $unsigned(cth_s));
+          // Pass if BOTH peaks are within threshold magnitude
+          // max_s is signed (>=0), compare to signed threshold
+          // abs(min_s) is unsigned magnitude, compare to unsigned threshold
+          pass_q <= (($unsigned(max_s) <= cth_u) && (abs32(min_s) <= cth_u));
 
           state <= DONE;
         end
 
         DONE: begin
-          // done pulse AFTER pass/chi/clo are already stable
-          done  <= 1'b1;
+          done  <= 1'b1;   // 1-cycle pulse AFTER outputs are stable
           state <= IDLE;
         end
 
@@ -130,5 +136,3 @@ module t13_chi2 #(
   end
 
 endmodule
-
-`default_nettype wire
