@@ -1,12 +1,12 @@
 `default_nettype none
 
-module t1_frequency #(parameter int unsigned N = 2048) (
+module t1_frequency #(parameter int unsigned SMALLN = 2048) (
   input  logic         clk,
   input  logic         rst_n,
 
   input  logic         en,
   input  logic         start,
-  input  logic [N-1:0] trng,
+  input  logic [SMALLN-1:0] trng,
   input  logic [31:0]  diff_th,
 
   output logic         done,
@@ -35,7 +35,7 @@ module t1_frequency #(parameter int unsigned N = 2048) (
   assign sum_q = c0 + c1;
   assign diff = (c0 > c1) ? (c0 - c1) : (c1 - c0);
 
-  p2s_shiftreg #(.WIDTH(N)) trng_reg1 (.clock(clk), .reset_n(rst_n), .D(trng),
+  p2s_shiftreg #(.WIDTH(SMALLN)) trng_reg1 (.clock(clk), .reset_n(rst_n), .D(trng),
               .ld(sh_ld), .en(sh_en), .Q(bit_q));
 
   counter #(.WIDTH(32)) c0_cnt (.clock(clk), .reset_n(rst_n), .D(32'd0),
@@ -61,8 +61,8 @@ module t1_frequency #(parameter int unsigned N = 2048) (
         sh_ld = 1'b0;
         sh_en = en;
         c_ld  = 1'b0;
-        c0_en = !(sum_q == N[31:0]) && (en && (bit_q == 1'b0));
-        c1_en = !(sum_q == N[31:0]) && (en && (bit_q == 1'b1));
+        c0_en = !(sum_q == SMALLN[31:0]) && (en && (bit_q == 1'b0));
+        c1_en = !(sum_q == SMALLN[31:0]) && (en && (bit_q == 1'b1));
         done = 1'b0;
         pass = 1'b0;
       end
@@ -93,7 +93,7 @@ module t1_frequency #(parameter int unsigned N = 2048) (
   always_comb begin
     unique case (state)
       START: next_state = (en && start) ? COUNT : START;
-      COUNT: next_state = (sum_q == N[31:0]) ? DONE : COUNT;
+      COUNT: next_state = (sum_q == SMALLN[31:0]) ? DONE : COUNT;
       DONE: next_state = en ? DONE : START;
       default: next_state = START;
     endcase

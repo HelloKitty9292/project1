@@ -424,7 +424,7 @@ module trng_wrapper #(
     .rgte9  (t4_rgte9_w)
   );
 
-  t5_rank #(.SMALLN(SMALLN), .SMALLM(BIGM)) u_t5 (
+  t5_rank #(.SMALLN(SMALLN), .BIGM(BIGM)) u_t5 (
     .clk     (clk),
     .rst_n   (rst_n),
     .en      (t5_en),

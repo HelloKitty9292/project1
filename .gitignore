@@ -27,3 +27,7 @@ xrun.*
 *.diag
 .simvision/
 genus.*
+!genus.tcl
+.pbs_ece008.ece.local.cmu.edu_2370805/
+.rs_hsuanjul.tstamp
+

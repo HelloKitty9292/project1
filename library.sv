@@ -56,3 +56,30 @@ function automatic int unsigned myclog2 (input int unsigned value);
     return r;
   end
 endfunction
+
+function automatic logic [63:0] almost_chi_t4 (
+  input logic [31:0] v0, v1, v2, v3, v4, v5,
+  input logic [31:0] N_blocks
+);
+
+  logic signed [31:0] d0, d1, d2, d3, d4, d5;
+  logic signed [63:0] s0, s1, s2, s3, s4, s5;
+
+  begin
+    d0 = $signed(100 * v0) - $signed(N_blocks * 12);
+    d1 = $signed(100 * v1) - $signed(N_blocks * 24);
+    d2 = $signed(100 * v2) - $signed(N_blocks * 25);
+    d3 = $signed(100 * v3) - $signed(N_blocks * 18);
+    d4 = $signed(100 * v4) - $signed(N_blocks * 10);
+    d5 = $signed(100 * v5) - $signed(N_blocks * 11);
+
+    s0 = d0 * d0;
+    s1 = d1 * d1;
+    s2 = d2 * d2;
+    s3 = d3 * d3;
+    s4 = d4 * d4;
+    s5 = d5 * d5;
+
+    almost_chi_t4 = s0 + s1 + s2 + s3 + s4 + s5;
+  end
+endfunction
