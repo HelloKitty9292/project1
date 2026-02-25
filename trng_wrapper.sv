@@ -364,7 +364,7 @@ module trng_wrapper #(
   } state, next_state;
 
   // test cases
-  t1_frequency #(.N(SMALLN)) u_t1 (
+  t1_frequency #(.SMALLN(SMALLN)) u_t1 (
     .clk     (clk),
     .rst_n   (rst_n),
     .en      (t1_en),
@@ -392,7 +392,7 @@ module trng_wrapper #(
     .c1lo    (t2_c1lo_w)
   );
 
-  t3_runs #(.N(SMALLN)) u_t3 (
+  t3_runs #(.SMALLN(SMALLN)) u_t3 (
     .clk   (clk),
     .rst_n (rst_n),
     .en    (t3_en),
@@ -407,7 +407,7 @@ module trng_wrapper #(
     .nr0   (t3_nr0_w)
   );
 
-  t4_blockrun #(.N(SMALLN)) u_t4 (
+  t4_blockrun #(.SMALLN(SMALLN)) u_t4 (
     .clk    (clk),
     .rst_n  (rst_n),
     .en     (t4_en),
@@ -424,7 +424,7 @@ module trng_wrapper #(
     .rgte9  (t4_rgte9_w)
   );
 
-  t5_rank #(.N(SMALLN), .M(BIGM)) u_t5 (
+  t5_rank #(.SMALLN(SMALLN), .SMALLM(BIGM)) u_t5 (
     .clk     (clk),
     .rst_n   (rst_n),
     .en      (t5_en),
@@ -436,7 +436,7 @@ module trng_wrapper #(
     .rfullm1 (t5_rfullm1_w)
   );
 
-  t7_template_hits #(.N(SMALLN), .M(SMALLM)) u_t7 (
+  t7_template_hits #(.SMALLN(SMALLN), .SMALLM(SMALLM)) u_t7 (
     .clk           (clk),
     .rst_n         (rst_n),
     .en            (t7_en),
@@ -449,7 +449,7 @@ module trng_wrapper #(
     .hits          (t7_hits_w)
   );
 
-  t8_template_hits #(.N(SMALLN), .M(SMALLM)) u_t8 (
+  t8_template_hits #(.SMALLN(SMALLN), .SMALLM(SMALLM)) u_t8 (
     .clk           (clk),
     .rst_n         (rst_n),
     .en            (t8_en),
@@ -462,7 +462,7 @@ module trng_wrapper #(
     .hits          (t8_hits_w)
   );
 
-  t10_taps #(.N(SMALLN), .L(LFSRL)) u_t10 (
+  t10_taps #(.SMALLN(SMALLN), .LSFRL(LFSRL)) u_t10 (
     .clk     (clk),
     .rst_n   (rst_n),
     .en      (t10_en),
@@ -474,7 +474,7 @@ module trng_wrapper #(
     .blockid (t10_blockid_w)
   );
 
-  t13_chi2 #(.N(SMALLN)) u_t13 (
+  t13_chi2 #(.SMALLN(SMALLN)) u_t13 (
     .clk   (clk),
     .rst_n (rst_n),
     .en    (t13_en),

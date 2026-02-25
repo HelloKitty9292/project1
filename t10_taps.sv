@@ -1,30 +1,30 @@
 `default_nettype none
 
 module t10_taps #(
-  parameter int unsigned N    = 2048,
-  parameter int unsigned L    = 9,
-  parameter int unsigned BIGM = 128,
-  parameter int unsigned BIGN = 16
+  parameter SMALLN = 2048,
+  parameter LSFRL = 9,
+  parameter BIGM = 128,
+  parameter BIGN = 16
 ) (
-  input  logic             clk,
-  input  logic             rst_n,
-  input  logic             en,
-  input  logic             start,
-  input  logic [N-1:0]     trng,
+  input  logic              clk,
+  input  logic              rst_n,
+  input  logic              en,
+  input  logic              start,
+  input  logic [SMALLN-1:0] trng,
 
-  output logic             done,
-  output logic             pass,
-  output logic [31:0]      taps,
-  output logic [31:0]      blockid
+  output logic              done,
+  output logic              pass,
+  output logic [31:0]       taps,
+  output logic [31:0]       blockid
 );
 
   // Four tap masks (must match TB)
-  localparam logic [L-1:0] MASK01 = 9'b0_0001_0000; // x^9 + x^4 + 1
-  localparam logic [L-1:0] MASK04 = 9'b0_0010_1100; // x^9 + x^5 + x^3 + x^2 + 1
-  localparam logic [L-1:0] MASK06 = 9'b0_0101_1000; // x^9 + x^6 + x^4 + x^3 + 1
-  localparam logic [L-1:0] MASK10 = 9'b0_0111_0110; // x^9 + x^6 + x^5 + x^4 + x^2 + x^1 + 1
+  localparam logic [LSFRL-1:0] MASK01 = 9'b0_0001_0000; // x^9 + x^4 + 1
+  localparam logic [LSFRL-1:0] MASK04 = 9'b0_0010_1100; // x^9 + x^5 + x^3 + x^2 + 1
+  localparam logic [LSFRL-1:0] MASK06 = 9'b0_0101_1000; // x^9 + x^6 + x^4 + x^3 + 1
+  localparam logic [LSFRL-1:0] MASK10 = 9'b0_0111_0110; // x^9 + x^6 + x^5 + x^4 + x^2 + x^1 + 1
 
-  function automatic logic [L-1:0] tap_sel(input logic [1:0] idx);
+  function automatic logic [LSFRL-1:0] tap_sel(input logic [1:0] idx);
     unique case (idx)
       2'd0: tap_sel = MASK01;
       2'd1: tap_sel = MASK04;
@@ -33,9 +33,9 @@ module t10_taps #(
     endcase
   endfunction
 
-  function automatic logic [L-1:0] lfsr_step(
-    input logic [L-1:0] st,
-    input logic [L-1:0] mask
+  function automatic logic [LSFRL-1:0] lfsr_step(
+    input logic [LSFRL-1:0] st,
+    input logic [LSFRL-1:0] mask
   );
     logic l0;
     l0 = st[0];
@@ -52,13 +52,12 @@ module t10_taps #(
     };
   endfunction
 
-  // Extract block k (0..15) from trng = {block0, block1, ..., block15}
-  // block0 lives in trng[2047:1920], block15 lives in trng[127:0]
+  // Extract block k
   function automatic logic [BIGM-1:0] get_block(input int unsigned k);
     int unsigned base;
     begin
-      base = (BIGN-1-k) * BIGM;     // k=0 -> base=1920
-      get_block = trng[base +: BIGM]; // grabs [base+127 : base]
+      base = (BIGN-1-k) * BIGM;
+      get_block = trng[base +: BIGM];
     end
   endfunction
 
@@ -80,8 +79,8 @@ module t10_taps #(
   logic [1:0]      tap_idx;   
   logic [8:0]      seed;    
   logic [6:0]      bit_idx;   
-  logic [L-1:0]    lfsr;
-  logic [L-1:0]    cur_taps;
+  logic [LSFRL-1:0]    lfsr;
+  logic [LSFRL-1:0]    cur_taps;
   logic [BIGM-1:0] blk;
 
   // outputs regs

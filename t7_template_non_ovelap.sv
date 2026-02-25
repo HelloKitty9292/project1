@@ -2,7 +2,7 @@
 
 module t7_template_hits #(
   parameter SMALLN = 2048,
-  parameter BIGM = 128,
+  parameter BIGM = 128, 
   parameter SMALLM = 9
 )(
   input  logic                   clk,

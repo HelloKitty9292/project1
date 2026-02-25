@@ -24,8 +24,7 @@ module t5_rank #(parameter N = 2048, parameter BIGM = 128, parameter Q = 16) (
   function automatic logic [BIGM-1:0] get_block(input int unsigned k);
     logic [31:0] base;
     begin
-      // block k starts at bit (N - (k+1)*BIGM)
-      base = N - (k+1)*BIGM;
+      base = N - (k+1)*BIGM; //block k start
       get_block = trng[base +: BIGM];
     end
   endfunction
