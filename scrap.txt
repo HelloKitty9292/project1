@@ -339,4 +339,5 @@ tb_t5.run_and_check
 **T5_FAIL**: There were <         2> errors detected in T5 testbench
 Simulation complete via $finish(1) at time 8061460 NS + 0
 ./tb_t5.sv:487 	$finish(1);
+xcelium> exit
 
