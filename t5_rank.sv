@@ -43,12 +43,12 @@ module t5_rank #(
 
   state_t state;
 
-  logic [$clog2(NUM_MATRICES)-1:0] mi;
-  logic [$clog2(QI)-1:0]          pivot;
+  logic [myclog2(NUM_MATRICES)-1:0] mi;
+  logic [myclog2(QI)-1:0]          pivot;
   logic signed [6:0]              col;      // 15..0
-  logic [$clog2(QI)-1:0]          scan_r;
-  logic [$clog2(QI)-1:0]          elim_r;
-  logic [$clog2(QI)-1:0]          found_r;
+  logic [myclog2(QI)-1:0]          scan_r;
+  logic [myclog2(QI)-1:0]          elim_r;
+  logic [myclog2(QI)-1:0]          found_r;
   logic                           found_valid;
 
   logic [5:0] rank_cnt;
