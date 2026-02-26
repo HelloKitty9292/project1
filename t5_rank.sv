@@ -4,7 +4,7 @@ module t5_rank #(
   parameter int unsigned SMALLN = 2048,
   parameter int unsigned BIGM   = 128,
   parameter int unsigned Q      = 16
-) (
+)(
   input  logic              clk,
   input  logic              rst_n,
   input  logic              en,
@@ -17,17 +17,21 @@ module t5_rank #(
   output logic [31:0]       rfullm1
 );
 
-  // --------------------------
+  // --------------------------------------------------
   // Derived constants
-  // --------------------------
-  localparam int unsigned MATRIX_BITS       = Q * Q;
-  localparam int unsigned NUM_MATRICES      = (SMALLN / MATRIX_BITS);
-  localparam int unsigned ROWS_PER_BLOCK    = (BIGM / Q);
-  localparam int unsigned BLOCKS_PER_MATRIX = (MATRIX_BITS / BIGM);
+  // --------------------------------------------------
 
-  // --------------------------
-  // Block extraction (combinational mux)
-  // --------------------------
+  localparam int unsigned MATRIX_BITS       = Q * Q;
+  localparam int unsigned NUM_MATRICES      = SMALLN / MATRIX_BITS;
+  localparam int unsigned ROWS_PER_BLOCK    = BIGM / Q;
+  localparam int unsigned BLOCKS_PER_MATRIX = MATRIX_BITS / BIGM;
+
+  localparam int unsigned MW = (NUM_MATRICES <= 1) ? 1 : $clog2(NUM_MATRICES);
+
+  // --------------------------------------------------
+  // Extract 128-bit block from TRNG
+  // --------------------------------------------------
+
   function automatic logic [BIGM-1:0] get_block(input int unsigned k);
     logic [31:0] base;
     begin
@@ -36,248 +40,298 @@ module t5_rank #(
     end
   endfunction
 
-  // --------------------------
+  // --------------------------------------------------
+  // Matrix buffer (16 rows of 16 bits)
+  // --------------------------------------------------
+
+  logic [Q-1:0] rows_buf [0:Q-1];
+
+  // --------------------------------------------------
+  // GF2 rank engine interface
+  // --------------------------------------------------
+
+  logic        gf2_start;
+  logic        gf2_done;
+  logic [31:0] gf2_rank;
+
+  gf2_rank_q #(.Q(Q)) gf2_core (
+    .clk      (clk),
+    .rst_n    (rst_n),
+    .start    (gf2_start),
+    .rows_in  (rows_buf),
+    .rank     (gf2_rank),
+    .done     (gf2_done)
+  );
+
+  // --------------------------------------------------
   // FSM
-  // --------------------------
-  enum logic [3:0] {
-    S_IDLE   = 4'd0,
-    S_LOAD0  = 4'd1,
-    S_LOAD1  = 4'd2,
-    S_PIVOT  = 4'd3,
-    S_ELIM   = 4'd4,
-    S_NEXT   = 4'd5,
-    S_ACCUM  = 4'd6,
-    S_COMMIT = 4'd7,   // <-- NEW: 1-cycle gap so wrapper can safely capture
-    S_DONE   = 4'd8
-  } state, next_state;
+  // --------------------------------------------------
 
-  // Working matrix rows
-  logic [Q-1:0]    a [0:Q-1];
-  logic [BIGM-1:0] blk0_reg;
+  typedef enum logic [2:0] {
+    S_IDLE,
+    S_LOAD,
+    S_START,
+    S_WAIT,
+    S_ACCUM,
+    S_DONE
+  } state_t;
 
-  // Counter widths
-  localparam int unsigned MW = (NUM_MATRICES <= 1) ? 1 : $clog2(NUM_MATRICES);
-  localparam int unsigned QW = (Q <= 1) ? 1 : $clog2(Q);
+  state_t state, next_state;
 
-  logic [MW-1:0]              m_idx;
-  logic [QW:0]                pivot_row;
-  logic signed [$clog2(Q+1):0] col;
-  logic [QW-1:0]              elim_r;
-  logic [QW:0]                rank_reg;
+  logic [MW-1:0] matrix_idx;
 
-  // Pivot finder
-  logic                       found_pivot;
-  logic [QW-1:0]              sel_row;
-
-  // Registered pivot decision (FFs)
-  logic                       had_pivot_q;
-  logic [QW-1:0]              pivot_idx_q;
-  logic signed [$clog2(Q+1):0] col_q;
-
-  // temps (outside always_ff)
-  logic [Q-1:0] tmp_row;
-  logic [Q-1:0] piv_row;
-  int           rr;
-  int           cidx;
-
-  // --------------------------
-  // Pivot finder (combinational)
-  // --------------------------
-  always_comb begin
-    found_pivot = 1'b0;
-    sel_row     = '0;
-
-    if (col >= 0) begin
-      for (int r = 0; r < Q; r++) begin
-        if (!found_pivot &&
-            (r >= int'(pivot_row)) &&
-            a[r][int'(col)]) begin
-          found_pivot = 1'b1;
-          sel_row     = r[QW-1:0];
-        end
-      end
-    end
-  end
-
-  // --------------------------
+  // --------------------------------------------------
   // Next-state logic
-  // --------------------------
+  // --------------------------------------------------
+
   always_comb begin
     next_state = state;
+
     unique case (state)
-      S_IDLE:   next_state = (en && start) ? S_LOAD0 : S_IDLE;
-      S_LOAD0:  next_state = S_LOAD1;
-      S_LOAD1:  next_state = S_PIVOT;
 
-      S_PIVOT: begin
-        if (pivot_row == Q || col < 0) next_state = S_ACCUM;
-        else if (found_pivot)          next_state = S_ELIM;
-        else                           next_state = S_NEXT;
-      end
+      S_IDLE:
+        next_state = (en && start) ? S_LOAD : S_IDLE;
 
-      S_ELIM:   next_state = (elim_r == (Q-1)) ? S_NEXT : S_ELIM;
-      S_NEXT:   next_state = S_PIVOT;
+      S_LOAD:
+        next_state = S_START;
 
-      // After rank computed, update counters; if last matrix, go COMMIT then DONE
-      S_ACCUM:  next_state = (m_idx == (NUM_MATRICES-1)) ? S_COMMIT : S_LOAD0;
+      S_START:
+        next_state = S_WAIT;
 
-      S_COMMIT: next_state = S_DONE;
+      S_WAIT:
+        next_state = (gf2_done) ? S_ACCUM : S_WAIT;
 
-      S_DONE:   next_state = en ? S_DONE : S_IDLE;
+      S_ACCUM:
+        next_state = (matrix_idx == NUM_MATRICES-1) ? S_DONE : S_LOAD;
 
-      default:  next_state = S_IDLE;
+      S_DONE:
+        next_state = en ? S_DONE : S_IDLE;
+
+      default:
+        next_state = S_IDLE;
     endcase
   end
 
-  // --------------------------
-  // Outputs
-  // --------------------------
-  always_comb begin
-    done = (state == S_DONE);
-    pass = (state == S_DONE); // your TB checks result[5], wrapper sets it on done
-  end
+  // --------------------------------------------------
+  // Sequential logic
+  // --------------------------------------------------
 
-  // --------------------------
-  // Sequential datapath
-  // --------------------------
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-      state     <= S_IDLE;
-      rfull     <= 32'd0;
-      rfullm1   <= 32'd0;
-
-      m_idx     <= '0;
-      blk0_reg  <= '0;
-
-      pivot_row <= '0;
-      col       <= '0;
-      elim_r    <= '0;
-      rank_reg  <= '0;
-
-      had_pivot_q <= 1'b0;
-      pivot_idx_q <= '0;
-      col_q       <= '0;
-
-      for (int r = 0; r < Q; r++) a[r] <= '0;
+      state      <= S_IDLE;
+      matrix_idx <= '0;
+      rfull      <= 32'd0;
+      rfullm1    <= 32'd0;
+      gf2_start  <= 1'b0;
 
     end else begin
       state <= next_state;
 
-      unique case (state)
-        S_IDLE: begin
+      gf2_start <= 1'b0;  // default
+
+      case (state)
+
+        // ----------------------------------------
+        S_IDLE:
+        begin
           if (en && start) begin
-            rfull     <= 32'd0;
-            rfullm1   <= 32'd0;
-            m_idx     <= '0;
-
-            pivot_row <= '0;
-            col       <= $signed(int'(Q-1));
-            elim_r    <= '0;
-            rank_reg  <= '0;
-
-            had_pivot_q <= 1'b0;
-            pivot_idx_q <= '0;
-            col_q       <= '0;
+            rfull      <= 32'd0;
+            rfullm1    <= 32'd0;
+            matrix_idx <= '0;
           end
         end
 
-        S_LOAD0: begin
-          blk0_reg  <= get_block(int'(m_idx) * int'(BLOCKS_PER_MATRIX) + 0);
+        // ----------------------------------------
+        // Load 16x16 matrix into rows_buf
+        // ----------------------------------------
+        S_LOAD:
+        begin
+          int unsigned bi;
+          int unsigned row_global;
 
-          pivot_row <= '0;
-          col       <= $signed(int'(Q-1));
-          elim_r    <= '0;
-          rank_reg  <= '0;
+          row_global = 0;
 
-          had_pivot_q <= 1'b0;
-          pivot_idx_q <= '0;
-          col_q       <= '0;
-        end
+          for (bi = 0; bi < BLOCKS_PER_MATRIX; bi++) begin
+            logic [BIGM-1:0] blk;
+            blk = get_block(matrix_idx*BLOCKS_PER_MATRIX + bi);
 
-        S_LOAD1: begin
-          for (int rblk = 0; rblk < int'(ROWS_PER_BLOCK); rblk++) begin
-            a[rblk] <= blk0_reg[(ROWS_PER_BLOCK-1-rblk)*Q +: Q];
-          end
-          for (int rblk = 0; rblk < int'(ROWS_PER_BLOCK); rblk++) begin
-            a[rblk + int'(ROWS_PER_BLOCK)]
-              <= get_block(int'(m_idx) * int'(BLOCKS_PER_MATRIX) + 1)[(ROWS_PER_BLOCK-1-rblk)*Q +: Q];
-          end
-        end
-
-        S_PIVOT: begin
-          had_pivot_q <= 1'b0; // default for this column
-
-          if (!(pivot_row == Q || col < 0)) begin
-            if (found_pivot) begin
-              had_pivot_q <= 1'b1;
-              pivot_idx_q <= pivot_row[QW-1:0];
-              col_q       <= col;
-
-              if (sel_row != pivot_row[QW-1:0]) begin
-                tmp_row               = a[pivot_row[QW-1:0]];
-                a[pivot_row[QW-1:0]] <= a[sel_row];
-                a[sel_row]           <= tmp_row;
-              end
-
-              elim_r <= '0;
+            for (int rblk = 0; rblk < ROWS_PER_BLOCK; rblk++) begin
+              rows_buf[row_global]
+                <= blk[(ROWS_PER_BLOCK-1-rblk)*Q +: Q];
+              row_global++;
             end
           end
         end
 
-        S_ELIM: begin
-          rr   = int'(elim_r);
-          cidx = int'(col_q);
-
-          piv_row = a[pivot_idx_q];
-
-          if (rr != int'(pivot_idx_q)) begin
-            if (a[rr][cidx]) a[rr] <= a[rr] ^ piv_row;
-          end
-
-          if (elim_r != (Q-1)) elim_r <= elim_r + 1'b1;
+        // ----------------------------------------
+        // Start GF2 core
+        // ----------------------------------------
+        S_START:
+        begin
+          gf2_start <= 1'b1;
         end
 
-        S_NEXT: begin
-          if (!(pivot_row == Q || col < 0)) begin
-            if (had_pivot_q) begin
-              rank_reg  <= rank_reg + 1'b1;
-              pivot_row <= pivot_row + 1'b1;
-            end
-            col <= col - 1'sd1;
-          end
+        // ----------------------------------------
+        // Accumulate result
+        // ----------------------------------------
+        S_ACCUM:
+        begin
+          if (gf2_rank == Q)
+            rfull <= rfull + 1;
+          else if (gf2_rank == Q-1)
+            rfullm1 <= rfullm1 + 1;
+
+          matrix_idx <= matrix_idx + 1'b1;
         end
 
-        S_ACCUM: begin
-          // Count this matrix
-          if (rank_reg == Q)        rfull   <= rfull + 32'd1;
-          else if (rank_reg == Q-1) rfullm1 <= rfullm1 + 32'd1;
-
-          // Move to next matrix if any
-          if (m_idx != (NUM_MATRICES-1)) begin
-            m_idx     <= m_idx + 1'b1;
-
-            pivot_row <= '0;
-            col       <= $signed(int'(Q-1));
-            elim_r    <= '0;
-            rank_reg  <= '0;
-
-            had_pivot_q <= 1'b0;
-            pivot_idx_q <= '0;
-            col_q       <= '0;
-          end
-        end
-
-        S_COMMIT: begin
-          // Intentionally empty: gives 1 full cycle for wrapper to see stable rfull/rfullm1
-        end
-
-        S_DONE: begin
-          // Hold
-        end
-
-        default: begin end
+        default: ;
       endcase
     end
   end
 
+  // --------------------------------------------------
+  // Outputs
+  // --------------------------------------------------
+
+  assign done = (state == S_DONE);
+  assign pass = (state == S_DONE);
+
+endmodule
+
+// GF(2) Rank of QxQ matrix
+module gf2_rank_q #(
+  parameter int unsigned Q = 16
+) (
+  input  logic         clk,
+  input  logic         rst_n,
+  input  logic         start,
+  input  logic [Q-1:0] rows_in [0:Q-1],
+  output logic [31:0]  rank,
+  output logic         done
+);
+
+  localparam int unsigned QW = (Q <= 1) ? 1 : $clog2(Q);
+
+  logic [Q-1:0] a [0:Q-1];
+
+  typedef enum logic [2:0] { S_IDLE, S_LOAD, S_FIND, S_SWAP, S_ELIM, S_NEXTCOL, S_DONE } state_t;
+  state_t state, next_state;
+
+  logic signed [$clog2(Q+1):0] col;
+  logic [QW:0]   pivot_row;
+  logic [QW:0]   scan_row;
+  logic [QW-1:0] sel_row;
+  logic          found_pivot;
+  logic [QW-1:0] elim_row;
+
+  always_comb begin
+    next_state = state;
+    unique case (state)
+      S_IDLE:    next_state = start ? S_LOAD : S_IDLE;
+      S_LOAD:    next_state = S_FIND;
+
+      S_FIND: begin
+        if (col < 0 || pivot_row == Q)    next_state = S_DONE;
+        else if (scan_row == Q)          next_state = found_pivot ? S_SWAP : S_NEXTCOL;
+        else                              next_state = S_FIND;
+      end
+
+      S_SWAP:    next_state = S_ELIM;
+      S_ELIM:    next_state = (elim_row == Q-1) ? S_NEXTCOL : S_ELIM;
+      S_NEXTCOL: next_state = S_FIND;
+      S_DONE:    next_state = S_IDLE;
+      default:   next_state = S_IDLE;
+    endcase
+  end
+
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      state       <= S_IDLE;
+      rank        <= 32'd0;
+      done        <= 1'b0;
+      col         <= '0;
+      pivot_row   <= '0;
+      scan_row    <= '0;
+      sel_row     <= '0;
+      found_pivot <= 1'b0;
+      elim_row    <= '0;
+      for (int r=0; r<Q; r++) a[r] <= '0;
+
+    end else begin
+      state <= next_state;
+      done  <= 1'b0;
+
+      unique case (state)
+        S_IDLE: begin
+          if (start) begin
+            rank      <= 32'd0;
+            pivot_row <= '0;
+            col       <= $signed(int'(Q-1));
+          end
+        end
+
+        S_LOAD: begin
+          for (int r=0; r<Q; r++) a[r] <= rows_in[r];
+
+          // init scan for this column
+          scan_row    <= pivot_row;
+          found_pivot <= 1'b0;
+          sel_row     <= '0;
+        end
+
+        S_FIND: begin
+          if (scan_row < Q) begin
+            if (!found_pivot && a[scan_row][int'(col)]) begin
+              found_pivot <= 1'b1;
+              sel_row     <= scan_row[QW-1:0];
+            end
+            scan_row <= scan_row + 1'b1;
+          end
+        end
+
+        S_SWAP: begin
+          if (found_pivot && (sel_row != pivot_row[QW-1:0])) begin
+            logic [Q-1:0] tmp;
+            tmp                   = a[pivot_row[QW-1:0]];
+            a[pivot_row[QW-1:0]] <= a[sel_row];
+            a[sel_row]           <= tmp;
+          end
+          elim_row <= '0;
+        end
+
+        S_ELIM: begin
+          int er;
+          er = int'(elim_row);
+
+          if (er != int'(pivot_row)) begin
+            if (a[er][int'(col)]) a[er] <= a[er] ^ a[pivot_row[QW-1:0]];
+          end
+
+          if (elim_row != Q-1) elim_row <= elim_row + 1'b1;
+        end
+
+        S_NEXTCOL: begin
+          // update rank/pivot first (based on FOUND from this column)
+          if (found_pivot) begin
+            rank      <= rank + 32'd1;
+            pivot_row <= pivot_row + 1'b1;
+          end
+
+          col <= col - 1'sd1;
+
+          // init scan for next column using *current* pivot_row reg
+          // (next cycle it will have updated if pivot happened)
+          scan_row    <= pivot_row + (found_pivot ? 1'b1 : 1'b0);
+          found_pivot <= 1'b0;
+          sel_row     <= '0;
+        end
+
+        S_DONE: begin
+          done <= 1'b1;
+        end
+
+        default: ;
+      endcase
+    end
+  end
 endmodule
