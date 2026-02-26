@@ -1,0 +1,31 @@
+xmvlog: *E,MISEXX (t5_rank.sv,219|18): expecting an '=' or '<=' sign in an assignment [9.2(IEEE)].
+          logic [Q-1:0] piv;
+                     |
+xmvlog: *E,NOTSTT (t5_rank.sv,219|21): expecting a statement [9(IEEE)].
+          piv = a[pivot_row[QW-1:0]];
+              |
+xmvlog: *E,CSISYX (t5_rank.sv,220|14): case item syntax error [9.5(IEEE)].
+          piv = a[pivot_row[QW-1:0]];
+                                    |
+xmvlog: *E,MISEXX (t5_rank.sv,220|36): expecting an '=' or '<=' sign in an assignment [9.2(IEEE)].
+          else if (rank_reg == (Q-1)[QW:0]) rfullm1 <= rfullm1 + 32'd1;
+                                    |
+xmvlog: *E,EXPRPA (t5_rank.sv,250|36): expecting a right parenthesis (')') [9.4(IEEE)].
+          else if (rank_reg == (Q-1)[QW:0]) rfullm1 <= rfullm1 + 32'd1;
+                                      |
+xmvlog: *E,NOLABL (t5_rank.sv,250|38): Labels are not supported on this statement type.
+          else if (rank_reg == (Q-1)[QW:0]) rfullm1 <= rfullm1 + 32'd1;
+                                        |
+xmvlog: *E,NOTSTT (t5_rank.sv,250|40): expecting a statement [9(IEEE)].
+        default: begin
+              |
+xmvlog: *E,NOTSTT (t5_rank.sv,268|14): expecting a statement [9(IEEE)].
+      endcase
+            |
+xmvlog: *E,NOTSTT (t5_rank.sv,271|12): expecting a statement [9(IEEE)].
+  end
+    |
+xmvlog: *E,EXPENM (t5_rank.sv,273|4): expecting the keyword 'endmodule' [12.1(IEEE)].
+	module worklib.t5_rank:sv
+		errors: 11, warnings: 5
+
