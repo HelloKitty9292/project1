@@ -51,7 +51,7 @@ module t5_rank #(
 
   logic [Q-1:0] tmp_row;
 
-  logic done_q, pass_q;
+  logic done_q, pass_q, done_sent;
   assign done = done_q;
   assign pass = pass_q;
 
@@ -131,6 +131,7 @@ module t5_rank #(
 
       done_q <= 1'b0;
       pass_q <= 1'b0;
+      done_sent  <= 1'b0;
 
       for (int r = 0; r < Q; r++) a[r] <= '0;
 
@@ -240,17 +241,18 @@ module t5_rank #(
         end
 
         S_PUBLISH: begin
-          // outputs stable BEFORE done pulse
           rfull   <= rfull_run;
           rfullm1 <= rfullm1_run;
 
-          // 1-cycle "results valid" pulse for wrapper SR capture
-          done_q  <= 1'b1;
-          pass_q  <= 1'b1;
+          done_sent <= 1'b0;   // arm the pulse for S_DONE
         end
 
         S_DONE: begin
-          // hold
+          if (!done_sent) begin
+            done_q    <= 1'b1;   // pulse AFTER outputs already updated
+            pass_q    <= 1'b1;
+            done_sent <= 1'b1;
+          end
         end
 
         default: ;
