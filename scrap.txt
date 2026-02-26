@@ -9,7 +9,7 @@ xcelium> run
     Matrix 5: rank = 0
     Matrix 6: rank = 0
     Matrix 7: rank = 0
-  trng_wrapper reports ready at clock 6732, time 134640
+  trng_wrapper reports ready at clock 8940, time 178800
   PASS: rfull=0 (exp 0), rfullm1=0 (exp 0)
 === Test 1: All ones ===
 --- Test 1 ---
@@ -21,7 +21,7 @@ xcelium> run
     Matrix 5: rank = 1
     Matrix 6: rank = 1
     Matrix 7: rank = 1
-  trng_wrapper reports ready at clock 146675, time 2933500
+  trng_wrapper reports ready at clock 150971, time 3019420
   PASS: rfull=0 (exp 0), rfullm1=0 (exp 0)
 === Test 2: Identity in slot 0 ===
 --- Test 2 ---
@@ -33,8 +33,8 @@ xcelium> run
     Matrix 5: rank = 0
     Matrix 6: rank = 0
     Matrix 7: rank = 0
-  trng_wrapper reports ready at clock 153424, time 3068480
-xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 3068540 NS).
+  trng_wrapper reports ready at clock 159913, time 3198260
+xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 3198320 NS).
 tb_t5.run_and_check
 **T5_ERROR2** Test 2: RFULL = 0, expected 1
   PASS: rfull=0 (exp 1), rfullm1=0 (exp 0)
@@ -48,8 +48,8 @@ tb_t5.run_and_check
     Matrix 5: rank = 16
     Matrix 6: rank = 16
     Matrix 7: rank = 16
-  trng_wrapper reports ready at clock 160285, time 3205700
-xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 3205760 NS).
+  trng_wrapper reports ready at clock 168862, time 3377240
+xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 3377300 NS).
 tb_t5.run_and_check
 **T5_ERROR2** Test 3: RFULL = 0, expected 8
   PASS: rfull=0 (exp 8), rfullm1=0 (exp 0)
@@ -63,8 +63,8 @@ tb_t5.run_and_check
     Matrix 5: rank = 15
     Matrix 6: rank = 15
     Matrix 7: rank = 15
-  trng_wrapper reports ready at clock 167146, time 3342920
-xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 3342980 NS).
+  trng_wrapper reports ready at clock 177811, time 3556220
+xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 3556280 NS).
 tb_t5.run_and_check
 **T5_ERROR3** Test 4: RFULLM1 = 0, expected 8
   PASS: rfull=0 (exp 0), rfullm1=0 (exp 8)
@@ -78,11 +78,11 @@ tb_t5.run_and_check
     Matrix 5: rank = 15
     Matrix 6: rank = 15
     Matrix 7: rank = 15
-  trng_wrapper reports ready at clock 173943, time 3478860
-xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 3478920 NS).
+  trng_wrapper reports ready at clock 186756, time 3735120
+xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 3735180 NS).
 tb_t5.run_and_check
 **T5_ERROR2** Test 5: RFULL = 0, expected 4
-xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 3478920 NS).
+xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 3735180 NS).
 tb_t5.run_and_check
 **T5_ERROR3** Test 5: RFULLM1 = 0, expected 4
   PASS: rfull=0 (exp 4), rfullm1=0 (exp 4)
@@ -96,11 +96,11 @@ tb_t5.run_and_check
     Matrix 5: rank = 15
     Matrix 6: rank = 15
     Matrix 7: rank = 15
-  trng_wrapper reports ready at clock 180804, time 3616080
-xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 3616140 NS).
+  trng_wrapper reports ready at clock 195705, time 3914100
+xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 3914160 NS).
 tb_t5.run_and_check
 **T5_ERROR2** Test 6: RFULL = 0, expected 2
-xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 3616140 NS).
+xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 3914160 NS).
 tb_t5.run_and_check
 **T5_ERROR3** Test 6: RFULLM1 = 0, expected 6
   PASS: rfull=0 (exp 2), rfullm1=0 (exp 6)
@@ -114,11 +114,11 @@ tb_t5.run_and_check
     Matrix 5: rank = 15
     Matrix 6: rank = 15
     Matrix 7: rank = 16
-  trng_wrapper reports ready at clock 187665, time 3753300
-xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 3753360 NS).
+  trng_wrapper reports ready at clock 204654, time 4093080
+xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 4093140 NS).
 tb_t5.run_and_check
 **T5_ERROR2** Test 7: RFULL = 0, expected 2
-xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 3753360 NS).
+xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 4093140 NS).
 tb_t5.run_and_check
 **T5_ERROR3** Test 7: RFULLM1 = 0, expected 6
   PASS: rfull=0 (exp 2), rfullm1=0 (exp 6)
@@ -132,11 +132,11 @@ tb_t5.run_and_check
     Matrix 5: rank = 16
     Matrix 6: rank = 15
     Matrix 7: rank = 15
-  trng_wrapper reports ready at clock 327599, time 6551980
-xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 6552040 NS).
+  trng_wrapper reports ready at clock 346676, time 6933520
+xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 6933580 NS).
 tb_t5.run_and_check
 **T5_ERROR2** Test 8: RFULL = 0, expected 2
-xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 6552040 NS).
+xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 6933580 NS).
 tb_t5.run_and_check
 **T5_ERROR3** Test 8: RFULLM1 = 0, expected 6
   PASS: rfull=0 (exp 2), rfullm1=0 (exp 6)
@@ -150,11 +150,11 @@ tb_t5.run_and_check
     Matrix 5: rank = 16
     Matrix 6: rank = 16
     Matrix 7: rank = 15
-  trng_wrapper reports ready at clock 334460, time 6689200
-xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 6689260 NS).
+  trng_wrapper reports ready at clock 355625, time 7112500
+xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 7112560 NS).
 tb_t5.run_and_check
 **T5_ERROR2** Test 9: RFULL = 0, expected 5
-xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 6689260 NS).
+xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 7112560 NS).
 tb_t5.run_and_check
 **T5_ERROR3** Test 9: RFULLM1 = 0, expected 3
   PASS: rfull=0 (exp 5), rfullm1=0 (exp 3)
@@ -168,11 +168,11 @@ tb_t5.run_and_check
     Matrix 5: rank = 15
     Matrix 6: rank = 15
     Matrix 7: rank = 15
-  trng_wrapper reports ready at clock 341321, time 6826420
-xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 6826480 NS).
+  trng_wrapper reports ready at clock 364574, time 7291480
+xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 7291540 NS).
 tb_t5.run_and_check
 **T5_ERROR2** Test 10: RFULL = 0, expected 1
-xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 6826480 NS).
+xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 7291540 NS).
 tb_t5.run_and_check
 **T5_ERROR3** Test 10: RFULLM1 = 0, expected 5
   PASS: rfull=0 (exp 1), rfullm1=0 (exp 5)
@@ -186,11 +186,11 @@ tb_t5.run_and_check
     Matrix 5: rank = 15
     Matrix 6: rank = 16
     Matrix 7: rank = 15
-  trng_wrapper reports ready at clock 348182, time 6963640
-xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 6963700 NS).
+  trng_wrapper reports ready at clock 373523, time 7470460
+xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 7470520 NS).
 tb_t5.run_and_check
 **T5_ERROR2** Test 11: RFULL = 0, expected 2
-xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 6963700 NS).
+xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 7470520 NS).
 tb_t5.run_and_check
 **T5_ERROR3** Test 11: RFULLM1 = 0, expected 5
   PASS: rfull=0 (exp 2), rfullm1=0 (exp 5)
@@ -204,11 +204,11 @@ tb_t5.run_and_check
     Matrix 5: rank = 15
     Matrix 6: rank = 16
     Matrix 7: rank = 16
-  trng_wrapper reports ready at clock 355043, time 7100860
-xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 7100920 NS).
+  trng_wrapper reports ready at clock 382472, time 7649440
+xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 7649500 NS).
 tb_t5.run_and_check
 **T5_ERROR2** Test 12: RFULL = 0, expected 3
-xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 7100920 NS).
+xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 7649500 NS).
 tb_t5.run_and_check
 **T5_ERROR3** Test 12: RFULLM1 = 0, expected 5
   PASS: rfull=0 (exp 3), rfullm1=0 (exp 5)
@@ -222,11 +222,11 @@ tb_t5.run_and_check
     Matrix 5: rank = 15
     Matrix 6: rank = 16
     Matrix 7: rank = 15
-  trng_wrapper reports ready at clock 361904, time 7238080
-xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 7238140 NS).
+  trng_wrapper reports ready at clock 391421, time 7828420
+xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 7828480 NS).
 tb_t5.run_and_check
 **T5_ERROR2** Test 13: RFULL = 0, expected 2
-xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 7238140 NS).
+xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 7828480 NS).
 tb_t5.run_and_check
 **T5_ERROR3** Test 13: RFULLM1 = 0, expected 6
   PASS: rfull=0 (exp 2), rfullm1=0 (exp 6)
@@ -240,11 +240,11 @@ tb_t5.run_and_check
     Matrix 5: rank = 14
     Matrix 6: rank = 15
     Matrix 7: rank = 15
-  trng_wrapper reports ready at clock 368765, time 7375300
-xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 7375360 NS).
+  trng_wrapper reports ready at clock 400370, time 8007400
+xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 8007460 NS).
 tb_t5.run_and_check
 **T5_ERROR2** Test 14: RFULL = 0, expected 3
-xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 7375360 NS).
+xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 8007460 NS).
 tb_t5.run_and_check
 **T5_ERROR3** Test 14: RFULLM1 = 0, expected 4
   PASS: rfull=0 (exp 3), rfullm1=0 (exp 4)
@@ -258,11 +258,11 @@ tb_t5.run_and_check
     Matrix 5: rank = 14
     Matrix 6: rank = 16
     Matrix 7: rank = 15
-  trng_wrapper reports ready at clock 375626, time 7512520
-xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 7512580 NS).
+  trng_wrapper reports ready at clock 409319, time 8186380
+xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 8186440 NS).
 tb_t5.run_and_check
 **T5_ERROR2** Test 15: RFULL = 0, expected 2
-xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 7512580 NS).
+xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 8186440 NS).
 tb_t5.run_and_check
 **T5_ERROR3** Test 15: RFULLM1 = 0, expected 5
   PASS: rfull=0 (exp 2), rfullm1=0 (exp 5)
@@ -276,11 +276,11 @@ tb_t5.run_and_check
     Matrix 5: rank = 15
     Matrix 6: rank = 16
     Matrix 7: rank = 15
-  trng_wrapper reports ready at clock 382487, time 7649740
-xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 7649800 NS).
+  trng_wrapper reports ready at clock 418268, time 8365360
+xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 8365420 NS).
 tb_t5.run_and_check
 **T5_ERROR2** Test 16: RFULL = 0, expected 2
-xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 7649800 NS).
+xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 8365420 NS).
 tb_t5.run_and_check
 **T5_ERROR3** Test 16: RFULLM1 = 0, expected 5
   PASS: rfull=0 (exp 2), rfullm1=0 (exp 5)
@@ -294,11 +294,11 @@ tb_t5.run_and_check
     Matrix 5: rank = 14
     Matrix 6: rank = 16
     Matrix 7: rank = 15
-  trng_wrapper reports ready at clock 389348, time 7786960
-xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 7787020 NS).
+  trng_wrapper reports ready at clock 427217, time 8544340
+xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 8544400 NS).
 tb_t5.run_and_check
 **T5_ERROR2** Test 17: RFULL = 0, expected 2
-xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 7787020 NS).
+xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 8544400 NS).
 tb_t5.run_and_check
 **T5_ERROR3** Test 17: RFULLM1 = 0, expected 5
   PASS: rfull=0 (exp 2), rfullm1=0 (exp 5)
@@ -312,8 +312,8 @@ tb_t5.run_and_check
     Matrix 5: rank = 15
     Matrix 6: rank = 15
     Matrix 7: rank = 15
-  trng_wrapper reports ready at clock 396209, time 7924180
-xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 7924240 NS).
+  trng_wrapper reports ready at clock 436166, time 8723320
+xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 8723380 NS).
 tb_t5.run_and_check
 **T5_ERROR3** Test 18: RFULLM1 = 0, expected 8
   PASS: rfull=0 (exp 0), rfullm1=0 (exp 8)
@@ -327,17 +327,17 @@ tb_t5.run_and_check
     Matrix 5: rank = 14
     Matrix 6: rank = 15
     Matrix 7: rank = 16
-  trng_wrapper reports ready at clock 403070, time 8061400
-xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 8061460 NS).
+  trng_wrapper reports ready at clock 445115, time 8902300
+xmsim: *E,ERRSEV (./tb_t5.sv,325): (time 8902360 NS).
 tb_t5.run_and_check
 **T5_ERROR2** Test 19: RFULL = 0, expected 5
-xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 8061460 NS).
+xmsim: *E,ERRSEV (./tb_t5.sv,331): (time 8902360 NS).
 tb_t5.run_and_check
 **T5_ERROR3** Test 19: RFULLM1 = 0, expected 2
   PASS: rfull=0 (exp 5), rfullm1=0 (exp 2)
 **T5_OK**: T5 testbench did not hang**
 **T5_FAIL**: There were <         2> errors detected in T5 testbench
-Simulation complete via $finish(1) at time 8061460 NS + 0
+Simulation complete via $finish(1) at time 8902360 NS + 0
 ./tb_t5.sv:487 	$finish(1);
 xcelium> exit
 
