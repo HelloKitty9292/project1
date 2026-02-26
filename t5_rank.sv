@@ -5,313 +5,265 @@ module t5_rank #(
   parameter int unsigned BIGM   = 128,
   parameter int unsigned Q      = 16
 ) (
-  input  logic              clk,
-  input  logic              rst_n,
-  input  logic              en,
-  input  logic              start,
-  input  logic [SMALLN-1:0] trng,
+  input  logic                  clk,
+  input  logic                  rst_n,
+  input  logic                  en,
+  input  logic                  start,
+  input  logic [SMALLN-1:0]     trng,
 
-  output logic              done,     // 1-cycle pulse (safe for wrapper capture)
-  output logic              pass,     // 1-cycle pulse (safe for wrapper capture)
-  output logic [31:0]       rfull,
-  output logic [31:0]       rfullm1
+  output logic                  done,
+  output logic                  pass,
+  output logic [31:0]           rfull,
+  output logic [31:0]           rfullm1
 );
 
-  // ------------------------------------------------------------
-  // Derived constants (matches TB assumptions for defaults)
-  // ------------------------------------------------------------
-  localparam int unsigned MATRIX_BITS       = Q*Q;               // 256
-  localparam int unsigned NUM_MATRICES      = SMALLN / MATRIX_BITS;     // 8
-  localparam int unsigned ROWS_PER_BLOCK    = BIGM / Q;                 // 8
-  localparam int unsigned BLOCKS_PER_MATRIX = MATRIX_BITS / BIGM;       // 2
+  // 2048 / (16*16) = 8 matrices for default params
+  localparam int unsigned MATRIX_BITS  = Q * Q;
+  localparam int unsigned NUM_MATRICES = (SMALLN / MATRIX_BITS);
 
-  localparam int unsigned MW = (NUM_MATRICES <= 1) ? 1 : $clog2(NUM_MATRICES);
-  localparam int unsigned QW = (Q <= 1) ? 1 : $clog2(Q);
-
-  // ------------------------------------------------------------
-  // Block extraction (must match working version’s mapping)
-  // ------------------------------------------------------------
+  // ----------------------------
+  // Helper: get 128-bit block k
+  // Matches TB: trng = {blk0, blk1, ..., blk15}
+  // So blk0 is MSBs of trng.
+  // ----------------------------
   function automatic logic [BIGM-1:0] get_block(input int unsigned k);
-    logic [31:0] base;
+    logic [31:0] msb;
     begin
-      base      = SMALLN - (k+1)*BIGM;     // block k starts here
-      get_block = trng[base +: BIGM];
+      msb = SMALLN - 1 - (k * BIGM);
+      get_block = trng[msb -: BIGM];
     end
   endfunction
 
-  // ------------------------------------------------------------
-  // Working matrix storage
-  // ------------------------------------------------------------
-  logic [Q-1:0]     a [0:Q-1];
-  logic [BIGM-1:0]  blk_hi, blk_lo;
+  // Working matrix rows (16 rows of 16 bits)
+  logic [Q-1:0] m [0:Q-1];
 
-  // Gaussian elimination control
-  logic signed [$clog2(Q+1):0] col;        // signed so it can go negative
-  logic [QW:0]                 pivot_row;  // 0..Q
-  logic [QW:0]                 scan_row;   // 0..Q
-  logic [QW-1:0]               sel_row;    // 0..Q-1
-  logic                        found_pivot;
-  logic [QW-1:0]               elim_row;   // 0..Q-1
-  logic [QW:0]                 rank_reg;   // 0..Q
-
-  // Matrix index / counters
-  logic [MW-1:0] m_idx;
-  logic [31:0]   rfull_run, rfullm1_run;
-
-  // Output pulse control (IMPORTANT for wrapper)
-  logic done_q, pass_q;
-  assign done = done_q;
-  assign pass = pass_q;
-
-  logic done_sent; // ensures done/pass are exactly 1-cycle
-
-  // ------------------------------------------------------------
-  // FSM
-  // ------------------------------------------------------------
+  // Rank engine state
   typedef enum logic [3:0] {
-    S_IDLE     = 4'd0,
-    S_CAP      = 4'd1,
-    S_UNPACK   = 4'd2,
-
-    S_INIT     = 4'd3,
-    S_SCAN     = 4'd4,
-    S_SWAP     = 4'd5,
-    S_ELIM     = 4'd6,
-    S_ADV      = 4'd7,
-
-    S_ACCUM    = 4'd8,
-    S_PUBLISH  = 4'd9,   // write rfull/rfullm1 regs
-    S_DONEPULSE= 4'd10,  // pulse done/pass ONE CYCLE AFTER publish
-    S_HOLD     = 4'd11   // stay here until en drops
+    S_IDLE,
+    S_LOAD,
+    S_FIND_PIVOT,
+    S_SWAP,
+    S_ELIM,
+    S_FINISH_MATRIX,
+    S_DONE
   } state_t;
 
-  state_t state, next_state;
+  state_t state;
 
-  // Next-state logic
-  always_comb begin
-    next_state = state;
+  // Indices/counters
+  logic [$clog2(NUM_MATRICES)-1:0] mi;      // matrix index 0..NUM_MATRICES-1
+  logic [$clog2(Q)-1:0]            pivot;   // pivot row
+  logic signed [6:0]               col;     // 15..0, signed so we can go <0
+  logic [$clog2(Q)-1:0]            scan_r;  // scanning rows for pivot
+  logic [$clog2(Q)-1:0]            elim_r;  // elimination row index
+  logic [$clog2(Q)-1:0]            found_r; // found pivot row
+  logic                            found_valid;
 
-    unique case (state)
-      S_IDLE:      next_state = (en && start) ? S_CAP : S_IDLE;
+  logic [5:0] rank_cnt; // up to 16
 
-      S_CAP:       next_state = S_UNPACK;
-      S_UNPACK:    next_state = S_INIT;
+  // Outputs are registered
+  logic [31:0] rfull_q, rfullm1_q;
+  assign rfull   = rfull_q;
+  assign rfullm1 = rfullm1_q;
 
-      S_INIT:      next_state = S_SCAN;
+  // Spec: T5 always "passes" (SW interprets counters)
+  assign pass = 1'b1;
 
-      S_SCAN: begin
-        if (pivot_row == Q || col < 0)
-          next_state = S_ACCUM;
-        else if (scan_row == Q)
-          next_state = found_pivot ? S_SWAP : S_ADV;
-        else
-          next_state = S_SCAN;
-      end
+  // ----------------------------
+  // Main FSM
+  // ----------------------------
+  integer rr;
 
-      S_SWAP:      next_state = S_ELIM;
-      S_ELIM:      next_state = (elim_row == Q-1) ? S_ADV : S_ELIM;
-      S_ADV:       next_state = S_SCAN;
-
-      S_ACCUM:     next_state = (m_idx == (NUM_MATRICES-1)) ? S_PUBLISH : S_CAP;
-
-      S_PUBLISH:   next_state = S_DONEPULSE;
-      S_DONEPULSE: next_state = S_HOLD;
-      S_HOLD:      next_state = en ? S_HOLD : S_IDLE;
-
-      default:     next_state = S_IDLE;
-    endcase
-  end
-
-  // ------------------------------------------------------------
-  // Sequential
-  // ------------------------------------------------------------
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-      state       <= S_IDLE;
+      state      <= S_IDLE;
+      done       <= 1'b0;
 
-      rfull       <= 32'd0;
-      rfullm1     <= 32'd0;
+      mi         <= '0;
+      pivot      <= '0;
+      col        <= '0;
+      scan_r     <= '0;
+      elim_r     <= '0;
+      found_r    <= '0;
+      found_valid<= 1'b0;
 
-      rfull_run   <= 32'd0;
-      rfullm1_run <= 32'd0;
-      m_idx       <= '0;
+      rank_cnt   <= '0;
+      rfull_q    <= 32'h0;
+      rfullm1_q  <= 32'h0;
 
-      blk_hi      <= '0;
-      blk_lo      <= '0;
-
-      col         <= '0;
-      pivot_row   <= '0;
-      scan_row    <= '0;
-      sel_row     <= '0;
-      found_pivot <= 1'b0;
-      elim_row    <= '0;
-      rank_reg    <= '0;
-
-      done_q      <= 1'b0;
-      pass_q      <= 1'b0;
-      done_sent   <= 1'b0;
-
-      for (int r = 0; r < Q; r++) a[r] <= '0;
+      for (rr = 0; rr < Q; rr++) m[rr] <= '0;
 
     end else begin
-      state <= next_state;
+      // If not enabled, hold everything (wrapper keeps en=1 during RUN)
+      if (!en) begin
+        // do nothing
+      end else begin
+        unique case (state)
 
-      // defaults each cycle
-      done_q <= 1'b0;
-      pass_q <= 1'b0;
-
-      unique case (state)
-
-        // --------------------------------------------------
-        // Start of run: clear counters, start at matrix 0
-        // --------------------------------------------------
-        S_IDLE: begin
-          if (en && start) begin
-            rfull_run   <= 32'd0;
-            rfullm1_run <= 32'd0;
-            m_idx       <= '0;
-          end
-        end
-
-        // --------------------------------------------------
-        // Capture the two 128b blocks for this matrix
-        // --------------------------------------------------
-        S_CAP: begin
-          blk_hi <= get_block(int'(m_idx)*BLOCKS_PER_MATRIX + 0);
-          blk_lo <= get_block(int'(m_idx)*BLOCKS_PER_MATRIX + 1);
-        end
-
-        // --------------------------------------------------
-        // Unpack into 16 rows (matches TB mapping)
-        // row0 comes from MSB chunk of blk_hi, etc.
-        // --------------------------------------------------
-        S_UNPACK: begin
-          for (int r = 0; r < int'(ROWS_PER_BLOCK); r++) begin
-            a[r]                  <= blk_hi[(ROWS_PER_BLOCK-1-r)*Q +: Q];
-            a[r + ROWS_PER_BLOCK] <= blk_lo[(ROWS_PER_BLOCK-1-r)*Q +: Q];
-          end
-        end
-
-        // --------------------------------------------------
-        // Init elimination for this matrix
-        // --------------------------------------------------
-        S_INIT: begin
-          rank_reg    <= '0;
-          pivot_row   <= '0;
-          col         <= $signed(int'(Q-1));
-
-          scan_row    <= '0;     // start scanning at pivot_row = 0
-          found_pivot <= 1'b0;
-          sel_row     <= '0;
-          elim_row    <= '0;
-        end
-
-        // --------------------------------------------------
-        // Scan for pivot in current column
-        // --------------------------------------------------
-        S_SCAN: begin
-          if (scan_row < Q) begin
-            if (!found_pivot && a[scan_row][int'(col)]) begin
-              found_pivot <= 1'b1;
-              sel_row     <= scan_row[QW-1:0];
-            end
-            scan_row <= scan_row + 1'b1;
-          end
-        end
-
-        // --------------------------------------------------
-        // Swap selected pivot row into pivot_row
-        // --------------------------------------------------
-        S_SWAP: begin
-          if (found_pivot && (sel_row != pivot_row[QW-1:0])) begin
-            logic [Q-1:0] tmp;
-            tmp                    = a[pivot_row[QW-1:0]];
-            a[pivot_row[QW-1:0]]  <= a[sel_row];
-            a[sel_row]            <= tmp;
-          end
-          elim_row <= '0;
-        end
-
-        // --------------------------------------------------
-        // Eliminate rows one per cycle (pipelined)
-        // --------------------------------------------------
-        S_ELIM: begin
-          int er;
-          er = int'(elim_row);
-
-          if (er != int'(pivot_row)) begin
-            if (a[er][int'(col)]) begin
-              a[er] <= a[er] ^ a[pivot_row[QW-1:0]];
+          // ------------------------
+          // IDLE: wait for start
+          // ------------------------
+          S_IDLE: begin
+            done <= 1'b0;
+            if (start) begin
+              rfull_q   <= 32'h0;
+              rfullm1_q <= 32'h0;
+              mi        <= '0;
+              state     <= S_LOAD;
             end
           end
 
-          if (elim_row != Q-1)
-            elim_row <= elim_row + 1'b1;
-        end
+          // ------------------------
+          // LOAD: load matrix mi from two 128-bit blocks, exactly like TB
+          // rows 0..7 from blk_hi MSB-first, rows 8..15 from blk_lo MSB-first
+          // ------------------------
+          S_LOAD: begin
+            logic [BIGM-1:0] blk_hi, blk_lo;
+            blk_hi = get_block(mi * 2);
+            blk_lo = get_block(mi * 2 + 1);
 
-        // --------------------------------------------------
-        // Advance to next column, update rank/pivot_row if pivot found
-        // --------------------------------------------------
-        S_ADV: begin
-          logic [QW:0] next_pivot;
-          next_pivot = pivot_row + (found_pivot ? 1'b1 : 1'b0);
+            for (rr = 0; rr < 8; rr++) begin
+              m[rr]     <= blk_hi[(7 - rr) * 16 +: 16];
+              m[8 + rr] <= blk_lo[(7 - rr) * 16 +: 16];
+            end
 
-          if (found_pivot) begin
-            rank_reg <= rank_reg + 1'b1;
+            rank_cnt    <= 6'd0;
+            pivot       <= '0;
+            col         <= $signed(Q-1); // 15
+            scan_r      <= '0;
+            found_valid <= 1'b0;
+
+            state <= S_FIND_PIVOT;
           end
 
-          pivot_row <= next_pivot;
-          col       <= col - 1'sd1;
+          // ------------------------
+          // FIND_PIVOT: scan rows pivot..15 to find first row with 1 in column col
+          // ------------------------
+          S_FIND_PIVOT: begin
+            if (col < 0 || pivot == Q[$clog2(Q)-1:0]) begin
+              // done with elimination for this matrix
+              state <= S_FINISH_MATRIX;
+            end else begin
+              // initialize scan on first entry into this state for this column
+              if (!found_valid && scan_r == '0) begin
+                scan_r <= pivot;
+              end
 
-          // re-init scan for next column using next_pivot
-          scan_row    <= next_pivot;
-          found_pivot <= 1'b0;
-          sel_row     <= '0;
-          elim_row    <= '0;
-        end
-
-        // --------------------------------------------------
-        // Accumulate this matrix result
-        // --------------------------------------------------
-        S_ACCUM: begin
-          if (rank_reg == Q)        rfull_run   <= rfull_run + 32'd1;
-          else if (rank_reg == Q-1) rfullm1_run <= rfullm1_run + 32'd1;
-
-          if (m_idx != (NUM_MATRICES-1))
-            m_idx <= m_idx + 1'b1;
-        end
-
-        // --------------------------------------------------
-        // Publish final counters into output registers
-        // IMPORTANT: do NOT pulse done here (NBA ordering issue)
-        // --------------------------------------------------
-        S_PUBLISH: begin
-          rfull     <= rfull_run;
-          rfullm1   <= rfullm1_run;
-          done_sent <= 1'b0;       // arm pulse for next state
-        end
-
-        // --------------------------------------------------
-        // Pulse done/pass ONE CYCLE AFTER publish
-        // so wrapper captures updated rfull/rfullm1
-        // --------------------------------------------------
-        S_DONEPULSE: begin
-          if (!done_sent) begin
-            done_q    <= 1'b1;
-            pass_q    <= 1'b1;
-            done_sent <= 1'b1;
+              // scanning
+              if (scan_r < Q[$clog2(Q)-1:0]) begin
+                if (m[scan_r][col] == 1'b1 && !found_valid) begin
+                  found_r     <= scan_r;
+                  found_valid <= 1'b1;
+                  state       <= S_SWAP;
+                end else begin
+                  // continue scan
+                  if (scan_r == Q-1) begin
+                    // not found in this column
+                    col        <= col - 1;
+                    scan_r     <= pivot;
+                    found_valid<= 1'b0;
+                  end else begin
+                    scan_r <= scan_r + 1;
+                  end
+                end
+              end else begin
+                // safety
+                col        <= col - 1;
+                scan_r     <= pivot;
+                found_valid<= 1'b0;
+              end
+            end
           end
-        end
 
-        // --------------------------------------------------
-        // Hold until en drops (matches your wrapper behavior)
-        // --------------------------------------------------
-        S_HOLD: begin
-          // nothing
-        end
+          // ------------------------
+          // SWAP: swap pivot row with found row (if different), then eliminate
+          // ------------------------
+          S_SWAP: begin
+            if (found_valid) begin
+              if (found_r != pivot) begin
+                logic [Q-1:0] tmp;
+                tmp        = m[pivot];
+                m[pivot]   <= m[found_r];
+                m[found_r] <= tmp;
+              end
+              elim_r <= '0;
+              state  <= S_ELIM;
+            end else begin
+              // shouldn't happen; go try next column
+              col    <= col - 1;
+              scan_r <= pivot;
+              state  <= S_FIND_PIVOT;
+            end
+          end
 
-        default: ;
-      endcase
+          // ------------------------
+          // ELIM: for all rows r != pivot, if m[r][col]==1, do m[r] ^= m[pivot]
+          // One row per cycle (fast enough for 200MHz).
+          // ------------------------
+          S_ELIM: begin
+            if (elim_r < Q[$clog2(Q)-1:0]) begin
+              if (elim_r != pivot && m[elim_r][col] == 1'b1) begin
+                m[elim_r] <= m[elim_r] ^ m[pivot];
+              end
+              if (elim_r == Q-1) begin
+                // finished elimination for this column
+                rank_cnt    <= rank_cnt + 1;
+                pivot       <= pivot + 1;
+                col         <= col - 1;
+                scan_r      <= pivot + 1; // next pivot start
+                found_valid <= 1'b0;
+                elim_r      <= '0;
+                state       <= S_FIND_PIVOT;
+              end else begin
+                elim_r <= elim_r + 1;
+              end
+            end else begin
+              // safety: treat as done
+              rank_cnt    <= rank_cnt + 1;
+              pivot       <= pivot + 1;
+              col         <= col - 1;
+              scan_r      <= pivot + 1;
+              found_valid <= 1'b0;
+              elim_r      <= '0;
+              state       <= S_FIND_PIVOT;
+            end
+          end
+
+          // ------------------------
+          // FINISH_MATRIX: update counters, move to next matrix or done
+          // ------------------------
+          S_FINISH_MATRIX: begin
+            if (rank_cnt == Q) begin
+              rfull_q <= rfull_q + 1;
+            end else if (rank_cnt == (Q-1)) begin
+              rfullm1_q <= rfullm1_q + 1;
+            end
+
+            if (mi == NUM_MATRICES-1) begin
+              state <= S_DONE;
+            end else begin
+              mi    <= mi + 1;
+              state <= S_LOAD;
+            end
+          end
+
+          // ------------------------
+          // DONE: hold done=1 until next start (wrapper will clear sr_done/result on start)
+          // ------------------------
+          S_DONE: begin
+            done <= 1'b1;
+            if (start) begin
+              done      <= 1'b0;
+              rfull_q   <= 32'h0;
+              rfullm1_q <= 32'h0;
+              mi        <= '0;
+              state     <= S_LOAD;
+            end
+          end
+
+          default: state <= S_IDLE;
+        endcase
+      end
     end
   end
 
