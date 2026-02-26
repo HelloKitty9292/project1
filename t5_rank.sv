@@ -217,60 +217,74 @@ module gf2_rank_q #(
   typedef enum logic [2:0] {
     S_IDLE,
     S_LOAD,
-    S_SCAN,     // scan_row walks pivot_row..Q-1
-    S_SWAP,
-    S_ELIM,
-    S_ADVANCE,
+    S_PIVOT,   // decide pivot for this column (combinational search)
+    S_SWAP,    // optional swap
+    S_ELIM,    // eliminate rows sequentially
+    S_NEXT,    // advance column/pivot bookkeeping
     S_DONE
   } state_t;
 
   state_t state, next_state;
 
-  logic signed [$clog2(Q+1):0] col;       // signed, can go to -1
-  logic [QW:0] pivot_row;                 // 0..Q
-  logic [QW:0] scan_row;                  // 0..Q
-  logic [QW-1:0] sel_row;                 // 0..Q-1
-  logic found_pivot;
-  logic [QW-1:0] elim_row;
+  logic signed [$clog2(Q+1):0] col;      // Q-1 down to -1
+  logic [QW:0]                 pivot_row; // 0..Q
+  logic [QW-1:0]               elim_row;  // 0..Q-1
 
-  // next-state
+  // combinational pivot finder for current column
+  logic                        found_pivot;
+  logic [QW-1:0]               sel_row;
+
+  always_comb begin
+    found_pivot = 1'b0;
+    sel_row     = '0;
+
+    if (col >= 0 && pivot_row < Q) begin
+      for (int r = 0; r < Q; r++) begin
+        if (!found_pivot &&
+            (r >= int'(pivot_row)) &&
+            a[r][int'(col)]) begin
+          found_pivot = 1'b1;
+          sel_row     = r[QW-1:0];
+        end
+      end
+    end
+  end
+
+  // next state
   always_comb begin
     next_state = state;
     unique case (state)
-      S_IDLE:    next_state = start ? S_LOAD : S_IDLE;
-      S_LOAD:    next_state = S_SCAN;
+      S_IDLE:   next_state = start ? S_LOAD  : S_IDLE;
+      S_LOAD:   next_state = S_PIVOT;
 
-      S_SCAN: begin
-        if (col < 0 || pivot_row == Q)       next_state = S_DONE;
-        else if (scan_row == Q)              next_state = found_pivot ? S_SWAP : S_ADVANCE;
-        else                                 next_state = S_SCAN;
+      S_PIVOT: begin
+        if (col < 0 || pivot_row == Q) next_state = S_DONE;
+        else if (found_pivot)          next_state = S_SWAP;
+        else                           next_state = S_NEXT;
       end
 
-      S_SWAP:    next_state = S_ELIM;
-      S_ELIM:    next_state = (elim_row == Q-1) ? S_ADVANCE : S_ELIM;
-      S_ADVANCE: next_state = S_SCAN;
-      S_DONE:    next_state = S_IDLE;
-      default:   next_state = S_IDLE;
+      S_SWAP:   next_state = S_ELIM;
+      S_ELIM:   next_state = (elim_row == Q-1) ? S_NEXT : S_ELIM;
+      S_NEXT:   next_state = S_PIVOT;
+      S_DONE:   next_state = S_IDLE;
+      default:  next_state = S_IDLE;
     endcase
   end
 
   // sequential
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-      state       <= S_IDLE;
-      rank        <= 32'd0;
-      done        <= 1'b0;
-      col         <= '0;
-      pivot_row   <= '0;
-      scan_row    <= '0;
-      sel_row     <= '0;
-      found_pivot <= 1'b0;
-      elim_row    <= '0;
-      for (int r=0; r<Q; r++) a[r] <= '0;
+      state     <= S_IDLE;
+      rank      <= 32'd0;
+      done      <= 1'b0;
+      col       <= '0;
+      pivot_row <= '0;
+      elim_row  <= '0;
+      for (int r = 0; r < Q; r++) a[r] <= '0;
 
     end else begin
       state <= next_state;
-      done  <= 1'b0; // 1-cycle pulse
+      done  <= 1'b0; // pulse
 
       unique case (state)
         S_IDLE: begin
@@ -282,24 +296,11 @@ module gf2_rank_q #(
         end
 
         S_LOAD: begin
-          for (int r=0; r<Q; r++) a[r] <= rows_in[r];
-
-          // init scan for first column
-          scan_row    <= pivot_row;   // 0
-          found_pivot <= 1'b0;
-          sel_row     <= '0;
+          for (int r = 0; r < Q; r++) a[r] <= rows_in[r];
         end
 
-        S_SCAN: begin
-          if (!(col < 0 || pivot_row == Q)) begin
-            if (scan_row < Q) begin
-              if (!found_pivot && a[scan_row][int'(col)]) begin
-                found_pivot <= 1'b1;
-                sel_row     <= scan_row[QW-1:0];
-              end
-              scan_row <= scan_row + 1'b1;
-            end
-          end
+        S_PIVOT: begin
+          // nothing sequential here; decision uses found_pivot/sel_row comb
         end
 
         S_SWAP: begin
@@ -325,20 +326,14 @@ module gf2_rank_q #(
           if (elim_row != Q-1) elim_row <= elim_row + 1'b1;
         end
 
-        S_ADVANCE: begin
-          // if pivot existed in this column, consume it
+        S_NEXT: begin
+          // if we pivoted in this column, consume it
           if (found_pivot) begin
             rank      <= rank + 32'd1;
             pivot_row <= pivot_row + 1'b1;
           end
-
           // always move to next column
           col <= col - 1'sd1;
-
-          // init scan for next column, using the *next* pivot_row
-          scan_row    <= pivot_row + (found_pivot ? 1'b1 : 1'b0);
-          found_pivot <= 1'b0;
-          sel_row     <= '0;
         end
 
         S_DONE: begin
