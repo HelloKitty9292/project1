@@ -12,7 +12,7 @@ module t5_rank #(
   input  logic [SMALLN-1:0] trng,
 
   output logic              done,     // 1-cycle pulse
-  output logic              pass,     // 1-cycle pulse (same as done)
+  output logic              pass,     // 1-cycle pulse
   output logic [31:0]       rfull,
   output logic [31:0]       rfullm1
 );
@@ -25,7 +25,6 @@ module t5_rank #(
   localparam int unsigned MW = (NUM_MATRICES <= 1) ? 1 : $clog2(NUM_MATRICES);
   localparam int unsigned QW = (Q <= 1) ? 1 : $clog2(Q);
 
-  // --- TRNG block extraction (matches your working comb version + TB)
   function automatic logic [BIGM-1:0] get_block(input int unsigned k);
     logic [31:0] base;
     begin
@@ -34,22 +33,19 @@ module t5_rank #(
     end
   endfunction
 
-  // --- Working matrix (GF2 elimination modifies it)
+  // working matrix
   logic [Q-1:0] a [0:Q-1];
 
-  // Capture regs for the two 128b blocks of one matrix
   logic [BIGM-1:0] blk_hi, blk_lo;
 
-  // Per-matrix rank engine regs
-  logic signed [$clog2(Q+1):0] col;         // signed so we can go <0
-  logic [QW:0]                 pivot_row;   // 0..Q
-  logic [QW:0]                 scan_row;    // 0..Q
-  logic [QW-1:0]               sel_row;     // 0..Q-1
+  logic signed [$clog2(Q+1):0] col;
+  logic [QW:0]                 pivot_row;
+  logic [QW:0]                 scan_row;
+  logic [QW-1:0]               sel_row;
   logic                        found_pivot;
-  logic [QW-1:0]               elim_row;    // 0..Q-1
-  logic [QW:0]                 rank_reg;    // 0..Q
+  logic [QW-1:0]               elim_row;
+  logic [QW:0]                 rank_reg;
 
-  // Matrix index + running counters
   logic [MW-1:0] m_idx;
   logic [31:0]   rfull_run, rfullm1_run;
 
@@ -67,19 +63,17 @@ module t5_rank #(
     S_ADV     = 4'd7,
 
     S_ACCUM   = 4'd8,
-    S_PUBLISH = 4'd9,   // <- outputs finalized here
+    S_PUBLISH = 4'd9,
     S_DONE    = 4'd10
   } state_t;
 
   state_t state, next_state;
 
-  // done/pass pulses (ONE cycle, in S_DONE)
   always_comb begin
     done = (state == S_DONE);
     pass = (state == S_DONE);
   end
 
-  // Next-state logic
   always_comb begin
     next_state = state;
     unique case (state)
@@ -90,7 +84,6 @@ module t5_rank #(
 
       S_INIT:    next_state = S_SCAN;
 
-      // Scan one row per cycle until scan_row==Q
       S_SCAN: begin
         if (pivot_row == Q || col < 0)
           next_state = S_ACCUM;
@@ -107,26 +100,21 @@ module t5_rank #(
 
       S_ACCUM:   next_state = (m_idx == (NUM_MATRICES-1)) ? S_PUBLISH : S_CAP;
 
-      // publish stable outputs for wrapper to sample
       S_PUBLISH: next_state = S_DONE;
 
-      // pulse done/pass once, then return idle when en drops
       S_DONE:    next_state = en ? S_DONE : S_IDLE;
 
       default:   next_state = S_IDLE;
     endcase
   end
 
-  // Sequential
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
       state       <= S_IDLE;
 
-      // outputs
       rfull       <= 32'd0;
       rfullm1     <= 32'd0;
 
-      // running
       rfull_run   <= 32'd0;
       rfullm1_run <= 32'd0;
       m_idx       <= '0;
@@ -149,7 +137,6 @@ module t5_rank #(
 
       unique case (state)
 
-        // -------------------- start new run
         S_IDLE: begin
           if (en && start) begin
             rfull_run   <= 32'd0;
@@ -158,13 +145,11 @@ module t5_rank #(
           end
         end
 
-        // -------------------- capture matrix blocks
         S_CAP: begin
           blk_hi <= get_block(int'(m_idx)*BLOCKS_PER_MATRIX + 0);
           blk_lo <= get_block(int'(m_idx)*BLOCKS_PER_MATRIX + 1);
         end
 
-        // -------------------- unpack into a[]
         S_UNPACK: begin
           for (int r = 0; r < int'(ROWS_PER_BLOCK); r++) begin
             a[r]                  <= blk_hi[(ROWS_PER_BLOCK-1-r)*Q +: Q];
@@ -172,27 +157,20 @@ module t5_rank #(
           end
         end
 
-        // -------------------- init rank engine for this matrix
         S_INIT: begin
           rank_reg    <= '0;
           pivot_row   <= '0;
           col         <= $signed(int'(Q-1));
 
-          // start scanning at pivot_row
-          scan_row    <= '0;
+          // IMPORTANT: initialize scan for first column ONCE here
+          scan_row    <= '0;            // pivot_row is 0 now
           found_pivot <= 1'b0;
           sel_row     <= '0;
           elim_row    <= '0;
         end
 
-        // -------------------- scan pivot (one row per cycle)
         S_SCAN: begin
-          // when entering a fresh column scan, ensure scan_row starts at pivot_row
-          if (scan_row == '0) begin
-            scan_row    <= pivot_row;
-            found_pivot <= 1'b0;
-            sel_row     <= '0;
-          end else if (scan_row < Q) begin
+          if (scan_row < Q) begin
             if (!found_pivot && a[scan_row][int'(col)]) begin
               found_pivot <= 1'b1;
               sel_row     <= scan_row[QW-1:0];
@@ -201,7 +179,6 @@ module t5_rank #(
           end
         end
 
-        // -------------------- optional swap
         S_SWAP: begin
           if (sel_row != pivot_row[QW-1:0]) begin
             tmp_row               = a[pivot_row[QW-1:0]];
@@ -211,7 +188,6 @@ module t5_rank #(
           elim_row <= '0;
         end
 
-        // -------------------- eliminate (one row per cycle)
         S_ELIM: begin
           int er;
           er = int'(elim_row);
@@ -226,24 +202,22 @@ module t5_rank #(
             elim_row <= elim_row + 1'b1;
         end
 
-        // -------------------- advance to next column
         S_ADV: begin
-          // if pivot existed in this column, accept it
+          // accept pivot if found
           if (found_pivot) begin
             rank_reg  <= rank_reg + 1'b1;
             pivot_row <= pivot_row + 1'b1;
           end
 
-          // move to next column
+          // next column
           col <= col - 1'sd1;
 
-          // IMPORTANT: restart scan for next column on next S_SCAN
-          scan_row    <= '0;      // sentinel meaning "fresh scan"
+          // IMPORTANT: initialize scan ONCE per column here (NOT in S_SCAN)
+          scan_row    <= (found_pivot ? (pivot_row + 1'b1) : pivot_row);
           found_pivot <= 1'b0;
           sel_row     <= '0;
         end
 
-        // -------------------- accumulate this matrix’ rank into running counts
         S_ACCUM: begin
           if (rank_reg == Q)        rfull_run   <= rfull_run + 32'd1;
           else if (rank_reg == Q-1) rfullm1_run <= rfullm1_run + 32'd1;
@@ -252,16 +226,14 @@ module t5_rank #(
             m_idx <= m_idx + 1'b1;
         end
 
-        // -------------------- publish stable outputs for wrapper
-        // wrapper samples sr_t5_rfull <= t5_rfull_w when t5_done=1.
-        // We ensure outputs are ALREADY correct before we pulse done.
         S_PUBLISH: begin
+          // outputs stable BEFORE done pulse
           rfull   <= rfull_run;
           rfullm1 <= rfullm1_run;
         end
 
         S_DONE: begin
-          // hold outputs stable here
+          // hold
         end
 
         default: ;
