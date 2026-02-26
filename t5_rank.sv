@@ -224,6 +224,7 @@ module t5_rank #(
 
           if (m_idx != (NUM_MATRICES-1))
             m_idx <= m_idx + 1'b1;
+          $display("T5 m=%0d rank=%0d", m_idx, rank_reg);
         end
 
         S_PUBLISH: begin
