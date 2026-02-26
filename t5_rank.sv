@@ -174,14 +174,16 @@ module t5_rank #(
         // ----------------------------------------
         // Accumulate result
         // ----------------------------------------
-        S_ACCUM:
+        S_WAIT:
         begin
-          if (gf2_rank == Q)
-            rfull <= rfull + 1;
-          else if (gf2_rank == Q-1)
-            rfullm1 <= rfullm1 + 1;
+          if (gf2_done) begin
+            if (gf2_rank == Q)
+              rfull <= rfull + 1;
+            else if (gf2_rank == Q-1)
+              rfullm1 <= rfullm1 + 1;
 
-          matrix_idx <= matrix_idx + 1'b1;
+            matrix_idx <= matrix_idx + 1'b1;
+          end
         end
 
         default: ;
