@@ -180,10 +180,11 @@ module t5_rank #(
         end
 
         S_SWAP: begin
-          if (sel_row != pivot_row[QW-1:0]) begin
-            tmp_row               = a[pivot_row[QW-1:0]];
+          if (found_pivot && (sel_row != pivot_row[QW-1:0])) begin
+            logic [Q-1:0] tmp;
+            tmp = a[pivot_row[QW-1:0]];
             a[pivot_row[QW-1:0]] <= a[sel_row];
-            a[sel_row]           <= tmp_row;
+            a[sel_row]           <= tmp;
           end
           elim_row <= '0;
         end
@@ -203,19 +204,26 @@ module t5_rank #(
         end
 
         S_ADV: begin
-          // accept pivot if found
-          if (found_pivot) begin
-            rank_reg  <= rank_reg + 1'b1;
-            pivot_row <= pivot_row + 1'b1;
-          end
+          // compute next pivot row deterministically
+          logic [QW:0] next_pivot;
+          next_pivot = pivot_row + (found_pivot ? 1'b1 : 1'b0);
 
-          // next column
+          // update rank/pivot_row
+          if (found_pivot) begin
+            rank_reg <= rank_reg + 1'b1;
+          end
+          pivot_row <= next_pivot;
+
+          // move to next column
           col <= col - 1'sd1;
 
-          // IMPORTANT: initialize scan ONCE per column here (NOT in S_SCAN)
-          scan_row    <= (found_pivot ? (pivot_row + 1'b1) : pivot_row);
+          // re-init scan for next column
+          scan_row    <= next_pivot;
           found_pivot <= 1'b0;
           sel_row     <= '0;
+
+          // reset elim_row
+          elim_row    <= '0;
         end
 
         S_ACCUM: begin
