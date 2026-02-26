@@ -51,6 +51,10 @@ module t5_rank #(
 
   logic [Q-1:0] tmp_row;
 
+  logic done_q, pass_q;
+  assign done = done_q;
+  assign pass = pass_q;
+
   typedef enum logic [3:0] {
     S_IDLE    = 4'd0,
     S_CAP     = 4'd1,
@@ -68,11 +72,6 @@ module t5_rank #(
   } state_t;
 
   state_t state, next_state;
-
-  always_comb begin
-    done = (state == S_DONE);
-    pass = (state == S_DONE);
-  end
 
   always_comb begin
     next_state = state;
@@ -130,10 +129,15 @@ module t5_rank #(
       elim_row    <= '0;
       rank_reg    <= '0;
 
+      done_q <= 1'b0;
+      pass_q <= 1'b0;
+
       for (int r = 0; r < Q; r++) a[r] <= '0;
 
     end else begin
       state <= next_state;
+      done_q <= 1'b0;
+      pass_q <= 1'b0;
 
       unique case (state)
 
@@ -239,6 +243,10 @@ module t5_rank #(
           // outputs stable BEFORE done pulse
           rfull   <= rfull_run;
           rfullm1 <= rfullm1_run;
+
+          // 1-cycle "results valid" pulse for wrapper SR capture
+          done_q  <= 1'b1;
+          pass_q  <= 1'b1;
         end
 
         S_DONE: begin
