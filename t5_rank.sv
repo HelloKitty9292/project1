@@ -45,7 +45,7 @@ module t5_rank #(
 
   logic [myclog2(NUM_MATRICES)-1:0] mi;
   logic [myclog2(QI)-1:0]          pivot;
-  logic signed [6:0]              col;      // 15..0
+  logic signed [6:0]              col; 
   logic [myclog2(QI)-1:0]          scan_r;
   logic [myclog2(QI)-1:0]          elim_r;
   logic [myclog2(QI)-1:0]          found_r;
@@ -98,8 +98,6 @@ module t5_rank #(
           blk_hi = get_block(mi * 2);
           blk_lo = get_block(mi * 2 + 1);
 
-          // EXACT TB packing:
-          // row 0 from MSB 16 of blk_hi, row 7 from LSB 16 of blk_hi
           for (rr = 0; rr < 8; rr++) begin
             m[rr]     <= blk_hi[(7 - rr) * 16 +: 16];
             m[8 + rr] <= blk_lo[(7 - rr) * 16 +: 16];
@@ -119,10 +117,9 @@ module t5_rank #(
             state <= S_FINISH_MATRIX;
           end else begin
             if (!found_valid) begin
-              // start scan at pivot if we haven't already
+              // start scan at pivot
               if (scan_r == '0) scan_r <= pivot;
 
-              // scan pivot..15 (one row/cycle)
               if (int'(scan_r) < QI) begin
                 if (m[scan_r][col] == 1'b1) begin
                   found_r     <= scan_r;
@@ -130,9 +127,9 @@ module t5_rank #(
                   state       <= S_SWAP;
                 end else begin
                   if (int'(scan_r) == QI-1) begin
-                    // not found in this column
+                    // not found in this col
                     col         <= col - 1;
-                    scan_r      <= pivot;      // restart at pivot for next column
+                    scan_r      <= pivot;      // restart at pivot for next col
                     found_valid <= 1'b0;
                   end else begin
                     scan_r <= scan_r + 1;
