@@ -612,22 +612,23 @@ module trng_wrapper #(
   end
 
   // sr_done
-  logic sr_done_d, sr_done_q, sr_done_we;
-  assign sr_done = sr_done_q;
-  register #(1) SR_done_reg (.clock(clk), .reset_n(rst_n), .D(sr_done_d), 
-            .en(sr_done_we), .Q(sr_done_q));
-  always_comb begin
-    if (start_pulse) begin
-      sr_done_d  = 1'b0;
-      sr_done_we = 1'b1;
-    end else if (state == DONE) begin
-      sr_done_d  = 1'b1;
-      sr_done_we = 1'b1;
-    end else begin
-      sr_done_d  = sr_done_q;
-      sr_done_we = 1'b0;
-    end
-  end
+  // logic sr_done_d, sr_done_q, sr_done_we;
+  assign sr_done = (state == IDLE) || (state == DONE);
+  // assign sr_done = sr_done_q;
+  // register #(1) SR_done_reg (.clock(clk), .reset_n(rst_n), .D(sr_done_d), 
+  //           .en(sr_done_we), .Q(sr_done_q));
+  // always_comb begin
+  //   if (start_pulse) begin
+  //     sr_done_d  = 1'b0;
+  //     sr_done_we = 1'b1;
+  //   end else if (state == DONE) begin
+  //     sr_done_d  = 1'b1;
+  //     sr_done_we = 1'b1;
+  //   end else begin
+  //     sr_done_d  = sr_done_q;
+  //     sr_done_we = 1'b0;
+  //   end
+  // end
 
   // sr_result
   logic [31:0] sr_result_d, sr_result_q;
