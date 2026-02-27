@@ -13,6 +13,7 @@ work/
 sim/
 xsim.dir/
 xcelium.d/
+fv/
 modelsim.ini
 transcript
 vsim.wlf
