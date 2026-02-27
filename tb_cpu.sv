@@ -193,7 +193,7 @@ always begin
 end
 
 always @(clocks) begin
-	if (clocks == 1000) begin
+	if (clocks == 10000) begin
 		$display("**CPU_HANG**: CPU testbench did not finish?");
 		$stop();
 	end

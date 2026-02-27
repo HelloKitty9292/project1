@@ -55,9 +55,9 @@ syn_opt
 
 #TODO uncomment these lines to get reports directly on text files
 # REPORTING (Timing, Area, Gates, Power)
-#report timing > ./genus_timing.rep
-#report area   > ./genus_area.rep
-#report gates  > ./genus_cell.rep
-#report power  > ./genus_power.rep
+report timing > ./genus_timing.rep
+report area   > ./genus_area.rep
+report gates  > ./genus_cell.rep
+report power  > ./genus_power.rep
 
 
